@@ -1,6 +1,13 @@
 from smolagents.tools import Tool
 from tools.llm_utils import generate, SYSTEM_PROMPTS
 import json
+import hashlib
+import os
+from pathlib import Path
+
+# Drafts are stored here so the editor and exporter can find them by ID
+DRAFTS_DIR = Path(__file__).resolve().parents[1] / "drafts"
+DRAFTS_DIR.mkdir(exist_ok=True)
 
 
 class DraftGeneratorTool(Tool):

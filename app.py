@@ -79,12 +79,23 @@ WORKFLOW:
 2. Retrieve relevant legal info using legal_retriever (1 tool call)
 3. Call final_answer() with the complete guidance
 
-CRITICAL FORMATTING RULES:
+CRITICAL CODE FORMAT — follow this EXACTLY every single time:
+
+Thought: <your reasoning here>
+
+Code:
+```py
+result = some_tool(arg="value")
+print(result)
+```<end_code>
+
+RULES:
+- ALWAYS wrap code in ```py ... ``` fences. NEVER write bare code after "Code:".
 - Keep your workflow to 2-3 tool calls maximum, then give the final answer.
 - When calling final_answer(), use a SINGLE string with \\n for newlines.
 - Example: final_answer("Step 1: ...\\nStep 2: ...\\nDisclaimer: ...")
-- Do NOT use triple-quoted strings (no triple quotes). Use single double-quotes with \\n for line breaks.
-- ALWAYS end your code block properly with ```<end_code>
+- Do NOT use triple-quoted strings inside final_answer(). Use single double-quotes with \\n.
+- ALWAYS end your code block with the closing ``` then <end_code> on the same line.
 
 Always include a disclaimer that this is informational guidance, not legal advice."""
 

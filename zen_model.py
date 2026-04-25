@@ -96,48 +96,94 @@ class ZenModel(Model):
         return "user"
     
     def _fix_truncated_code(self, content: str) -> str:
-        """Fix code blocks that were truncated by the API.
-        
-        The big-pickle model sometimes stops mid-output, leaving code blocks
-        without closing ``` and <end_code> tags. This causes smolagents to
-        fail with 'regex pattern not found' errors.
+        """Fix code blocks that were truncated or malformed by the API.
+
+        The big-pickle model produces several broken patterns:
+        1. Missing opening ```py fence  -- "Code:\\n\\nresult = foo()<end_code>"
+        2. Missing closing ``` fence    -- "```py\\nresult = foo()"  (no closing)
+        3. Unbalanced parentheses       -- "```py\\nfoo(bar\\n```<end_code>"
+        4. <end_code> present but no backtick fence at all
         """
         import re
-        
-        # Check if there's an opening code block
-        has_opening = bool(re.search(r'```(?:py|python)\n', content))
-        has_closing = bool(re.search(r'\n```', content))
-        
-        if not has_opening:
-            return content  # No code block to fix
-        
-        if has_opening and not has_closing:
-            print("[ZenModel._fix_truncated_code] Detected truncated code block, fixing...")
-            
-            # Get everything after the last ```py opening
-            match = list(re.finditer(r'```(?:py|python)\n', content))
-            if match:
-                last_open = match[-1]
-                code_part = content[last_open.end():]
-                
-                # Fix incomplete last line — balance parentheses
-                open_parens = code_part.count('(') - code_part.count(')')
+
+        # ------------------------------------------------------------------ #
+        # Pattern 1: "Code:\n\n<code lines><end_code>" -- no backtick fences  #
+        # The model wrote code after "Code:" but skipped the ```py opener.    #
+        # ------------------------------------------------------------------ #
+        has_code_section = bool(re.search(r'\bCode:\s*\n', content, re.IGNORECASE))
+        has_fence_opener = bool(re.search(r'```(?:py|python)\n', content))
+
+        if has_code_section and not has_fence_opener:
+            # Inject ```py\n after the "Code:" line
+            fixed = re.sub(
+                r'(Code:\s*\n\s*)',
+                lambda m: m.group(0) + '```py\n',
+                content,
+                count=1,
+                flags=re.IGNORECASE,
+            )
+            # Remove any stray <end_code> so we can re-add it cleanly
+            fixed = fixed.replace('<end_code>', '').rstrip()
+            # Balance parentheses before closing
+            code_start = re.search(r'```py\n', fixed)
+            if code_start:
+                code_body = fixed[code_start.end():]
+                open_parens = code_body.count('(') - code_body.count(')')
+                open_brackets = code_body.count('[') - code_body.count(']')
                 if open_parens > 0:
-                    code_part = code_part.rstrip()
-                    code_part += ')' * open_parens
-                    content = content[:last_open.end()] + code_part
-                
-            # Append closing markers
-            content = content.rstrip() + '\n```<end_code>'
-            print(f"[ZenModel._fix_truncated_code] Fixed content tail: ...{content[-80:]!r}")
-        
-        # Also ensure <end_code> is present if ``` is there but <end_code> is missing
-        if has_opening and has_closing and '<end_code>' not in content:
-            content = content.rstrip() + '<end_code>'
-            print("[ZenModel._fix_truncated_code] Added missing <end_code> tag")
-        
-        return content
-    
+                    fixed = fixed.rstrip() + ')' * open_parens
+                    print(f"[ZenModel._fix_truncated_code] (p1) Fixed {open_parens} unclosed parens")
+                if open_brackets > 0:
+                    fixed = fixed.rstrip() + ']' * open_brackets
+            fixed = fixed.rstrip() + '\n```<end_code>'
+            print(f"[ZenModel._fix_truncated_code] (p1) Injected missing ```py fence")
+            print(f"[ZenModel._fix_truncated_code] tail: {fixed[-120:]!r}")
+            return fixed
+
+        # If there's no code block at all, nothing to fix
+        if not has_fence_opener:
+            return content
+
+        # ------------------------------------------------------------------ #
+        # Patterns 2 & 3: opening fence exists, check for missing closing     #
+        # ------------------------------------------------------------------ #
+        # Strip any <end_code> that's already in the content so we can re-add it properly
+        content_clean = content.replace('<end_code>', '')
+
+        # Find the code section (after the last opening ```)
+        all_opens = list(re.finditer(r'```(?:py|python)\n', content_clean))
+        last_open = all_opens[-1]
+        before_code = content_clean[:last_open.end()]
+        code_after = content_clean[last_open.end():]
+
+        # Check if there's a proper closing ``` on its own line
+        closing_match = re.search(r'\n```\s*$', code_after, re.MULTILINE)
+
+        if closing_match:
+            # Closing exists -- just ensure <end_code> is at the end
+            result = content_clean.rstrip() + '<end_code>'
+        else:
+            # No proper closing -- fix the code and add closing
+            code_lines = code_after.rstrip().split('\n')
+
+            # Fix unbalanced parentheses on the last line
+            full_code = '\n'.join(code_lines)
+            open_parens = full_code.count('(') - full_code.count(')')
+            open_brackets = full_code.count('[') - full_code.count(']')
+
+            if open_parens > 0:
+                code_lines[-1] = code_lines[-1].rstrip() + ')' * open_parens
+                print(f"[ZenModel._fix_truncated_code] Fixed {open_parens} unclosed parentheses")
+            if open_brackets > 0:
+                code_lines[-1] = code_lines[-1].rstrip() + ']' * open_brackets
+
+            fixed_code = '\n'.join(code_lines)
+            result = before_code + fixed_code + '\n```<end_code>'
+            print(f"[ZenModel._fix_truncated_code] Fixed truncated code block")
+            print(f"[ZenModel._fix_truncated_code] ... tail: {result[-100:]!r}")
+
+        return result
+
     def __call__(
         self,
         messages: List[Dict[str, str]],
@@ -222,7 +268,7 @@ class ZenModel(Model):
                 print(f"[ZenModel.__call__] Response status: {response.status_code}")
                 
                 if response.status_code == 429:
-                    # Rate limited — wait and retry
+                    # Rate limited -- wait and retry
                     wait = min(2 ** attempt * 3, 15)
                     print(f"[ZenModel.__call__] Rate limited, retrying in {wait}s (attempt {attempt+1}/{max_retries})")
                     _time.sleep(wait)
@@ -233,7 +279,7 @@ class ZenModel(Model):
                     print(f"[ZenModel.__call__] ERROR: {response.status_code} - {error_text}")
                     return ChatMessage(
                         role="assistant",
-                        content=f'Thought: The API returned an error ({response.status_code}). I will provide the best answer I can.\n\nCode:\n```py\nfinal_answer("I encountered a temporary issue. Please try your question again.")\n```<end_code>',
+                        content='Thought: The API returned an error. I will provide the best answer I can.\n\nCode:\n```py\nfinal_answer("I encountered a temporary issue. Please try your question again.")\n```<end_code>',
                     )
                 
                 result = response.json()
@@ -266,7 +312,7 @@ class ZenModel(Model):
                 print(f"[ZenModel.__call__] SUCCESS: content_len={len(content)}, tokens_in={self.last_input_token_count}, tokens_out={self.last_output_token_count}, finish_reason={finish_reason}")
                 print(f"[ZenModel.__call__] Content preview: {content[:200]!r}...")
                 
-                # Post-process: fix truncated code blocks
+                # Post-process: fix truncated/malformed code blocks
                 content = self._fix_truncated_code(content)
                 
                 return ChatMessage(
