@@ -1,0 +1,6 @@
+__pycache__
+.env
+AI Agent
+env
+node_modules
+.vscode
