@@ -1,0 +1,23 @@
+{
+  "title": "Legal AI Assistant",
+  "emoji": "⚖️",
+  "colorFrom": "blue",
+  "colorTo": "green",
+  "sdk": "gradio",
+  "app_port": 7860,
+  "command": "python app.py",
+  "requirements": [
+    "smolagents",
+    "openai",
+    "chromadb",
+    "gradio",
+    "python-dotenv",
+    "pytz",
+    "duckduckgo-search",
+    "markdownify"
+  ],
+  "cpu_threads": 4,
+  "memory": 8192,
+  "description": "AI-powered legal assistance platform for Indian citizens - helps file FIRs, consumer complaints, RTI applications, and labour complaints.",
+  "tags": ["legal", "ai-assistant", "india", "gradio"]
+}
