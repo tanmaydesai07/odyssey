@@ -16,6 +16,14 @@ load_dotenv(env_path)
 from smolagents.models import Model, ChatMessage
 from smolagents.tools import Tool
 
+# Observability — optional, no-op if keys not set
+try:
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import observability as _obs
+except Exception:
+    _obs = None
+
 
 class ZenModel(Model):
     """OpenCode Zen model - OpenAI compatible API
@@ -311,7 +319,19 @@ class ZenModel(Model):
                 
                 print(f"[ZenModel.__call__] SUCCESS: content_len={len(content)}, tokens_in={self.last_input_token_count}, tokens_out={self.last_output_token_count}, finish_reason={finish_reason}")
                 print(f"[ZenModel.__call__] Content preview: {content[:200]!r}...")
-                
+
+                # Log to Langfuse if enabled
+                if _obs and _obs.is_enabled():
+                    _trace = getattr(self, "_current_trace", None)
+                    _obs.log_llm_call(
+                        trace=_trace,
+                        model=self.model_id,
+                        prompt_tokens=self.last_input_token_count,
+                        completion_tokens=self.last_output_token_count,
+                        input_preview=api_messages[-1].get("content", "")[:300] if api_messages else "",
+                        output_preview=content[:300],
+                    )
+
                 # Post-process: fix truncated/malformed code blocks
                 content = self._fix_truncated_code(content)
                 

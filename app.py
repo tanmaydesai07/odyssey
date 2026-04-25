@@ -33,9 +33,17 @@ from tools.legal_retriever import LegalRetrieverTool, SourceCitationTool
 # Import remaining tools from separate files
 from tools.document_tools import DraftGeneratorTool, DraftEditorTool, DocumentExporterTool, AuthorityFinderTool, ChecklistGeneratorTool
 from tools.safety_tools import SafetyGuardTool, CrisisEscalatorTool, DisclaimerEnforcerTool
-from tools.translation_tools import TranslatorTool, LegalTermGlossaryTool
+from tools.translation_tools import TranslatorTool, LegalTermGlossaryTool, LanguageDetectorTool
 from tools.audit_tools import AuditLoggerTool, SessionManagerTool, CaseDashboardTool, WorkflowProgressTool, AnalyticsReporterTool
 from tools.web_tools import WebSearchTool, VisitWebpageTool
+from tools.advanced_tools import (
+    ComplaintStrengthAnalyserTool,
+    EvidenceOrganiserTool,
+    HearingPreparationTool,
+    MultiDocumentSummariserTool,
+    EscalationRecommenderTool,
+    PIIScrubbingTool,
+)
 
 # Import custom streaming UI
 from ui.gradio_ui import GradioUI
@@ -74,10 +82,14 @@ print(f"[Agent] Using model: {model.model_id}")
 
 SYSTEM_PROMPT = """You are a Legal Assistance Agent for Indian citizens. Help users with FIRs, consumer complaints, RTI applications, and legal processes.
 
-WORKFLOW:
-1. Classify the case using case_classifier (1 tool call)
-2. Retrieve relevant legal info using legal_retriever (1 tool call)
-3. Call final_answer() with the complete guidance
+WORKFLOW — follow this order every time:
+1. DETECT LANGUAGE using language_detector — respond in the user's language throughout
+2. INTAKE using intake_analyzer — extract facts, identify missing info (especially city/state)
+3. If intake says ready_to_proceed=false — ask the user the follow_up_questions, wait for answers
+4. CLASSIFY using case_classifier
+5. RETRIEVE using legal_retriever
+6. PLAN using workflow_planner (includes escalation paths)
+7. Give final_answer with complete guidance
 
 CRITICAL CODE FORMAT — follow this EXACTLY every single time:
 
@@ -91,13 +103,17 @@ print(result)
 
 RULES:
 - ALWAYS wrap code in ```py ... ``` fences. NEVER write bare code after "Code:".
-- Keep your workflow to 2-3 tool calls maximum, then give the final answer.
+- NEVER assume the user's location — always ask if city/state is missing.
+- Keep tool calls to max 4-5, then give the final answer.
 - When calling final_answer(), use a SINGLE string with \\n for newlines.
-- Example: final_answer("Step 1: ...\\nStep 2: ...\\nDisclaimer: ...")
-- Do NOT use triple-quoted strings inside final_answer(). Use single double-quotes with \\n.
+- Do NOT use triple-quoted strings inside final_answer().
 - ALWAYS end your code block with the closing ``` then <end_code> on the same line.
-
-Always include a disclaimer that this is informational guidance, not legal advice."""
+- Always include a disclaimer that this is informational guidance, not legal advice.
+- If user asks about escalation (police refused, no response, etc.) use escalation_recommender.
+- If user wants to analyse case strength, use complaint_strength_analyser.
+- If user wants to organise evidence, use evidence_organiser.
+- If user wants hearing prep, use hearing_preparation.
+- If user pastes documents, use multi_document_summariser."""
 
 agent = CodeAgent(
     model=model,
@@ -122,13 +138,20 @@ agent = CodeAgent(
         DisclaimerEnforcerTool(),
         TranslatorTool(),
         LegalTermGlossaryTool(),
+        LanguageDetectorTool(),
         AuditLoggerTool(),
         SessionManagerTool(),
         CaseDashboardTool(),
         WorkflowProgressTool(),
         AnalyticsReporterTool(),
+        ComplaintStrengthAnalyserTool(),
+        EvidenceOrganiserTool(),
+        HearingPreparationTool(),
+        MultiDocumentSummariserTool(),
+        EscalationRecommenderTool(),
+        PIIScrubbingTool(),
     ],
-    max_steps=8,
+    max_steps=12,
     verbosity_level=2,
     planning_interval=4,
     name="legal_assistant",

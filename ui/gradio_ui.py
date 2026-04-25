@@ -13,6 +13,12 @@ from smolagents.memory import MemoryStep
 
 import session_store as ss
 
+# Observability — optional, no-op if keys not set
+try:
+    import observability as _obs
+except Exception:
+    _obs = None
+
 
 def _clean_text(text: str) -> str:
     """Remove problematic Unicode characters for Windows display."""
@@ -102,6 +108,19 @@ class GradioUI:
             session_state["agent"] = self.agent
 
         agent = session_state["agent"]
+
+        # Start a Langfuse trace for this user turn
+        trace = None
+        if _obs:
+            trace = _obs.start_trace(
+                name="legal_query",
+                session_id=sid,
+                user_query=prompt,
+                metadata={"session_id": sid},
+            )
+            # Attach trace to model so LLM calls can reference it
+            if hasattr(agent, "model"):
+                agent.model._current_trace = trace
 
         # Add user message
         messages.append(gr.ChatMessage(role="user", content=prompt))
@@ -198,6 +217,15 @@ class GradioUI:
             ss.save_agent_memory(sid, agent)
         except Exception as e:
             print(f"[GradioUI] Warning: could not persist session {sid}: {e}")
+
+        # End Langfuse trace
+        if _obs and trace:
+            final_text = next(
+                (m.content for m in reversed(messages) if getattr(m, "role", "") == "assistant" and not getattr(m, "metadata", {})),
+                None,
+            )
+            _obs.end_trace(trace, output=final_text)
+            _obs.flush()
 
     # ------------------------------------------------------------------
     # Launch

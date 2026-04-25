@@ -1,6 +1,7 @@
 """
 Translation and legal glossary tools.
 Both are AI-powered — no hardcoded word lists or echo stubs.
+Includes language detection for regional language input.
 """
 from smolagents.tools import Tool
 from tools.llm_utils import generate
@@ -20,6 +21,7 @@ _LANG_NAMES = {
     "pa": "Punjabi",
     "or": "Odia",
     "as": "Assamese",
+    "ur": "Urdu",
 }
 
 
@@ -135,3 +137,55 @@ Return a JSON object with keys: term, definition, source_law, practical_example,
                 "definition": result,
                 "language": lang,
             }, ensure_ascii=False)
+
+
+# ---------------------------------------------------------------------------
+# Language Detector — detects input language so agent can respond in kind
+# ---------------------------------------------------------------------------
+
+class LanguageDetectorTool(Tool):
+    name = "language_detector"
+    description = (
+        "Detect the language of the user's input. "
+        "Call this at the START of every conversation so the agent can respond "
+        "in the user's language. Supports all Indian languages."
+    )
+    inputs = {
+        "text": {
+            "type": "string",
+            "description": "The user's input text to detect language from.",
+        },
+    }
+    output_type = "string"
+
+    def forward(self, text: str) -> str:
+        # Fast path: if all ASCII, almost certainly English
+        if all(ord(c) < 128 for c in text.replace(" ", "")):
+            return json.dumps({
+                "detected_language": "en",
+                "language_name": "English",
+                "confidence": "high",
+                "should_respond_in": "en",
+            })
+
+        system = """Detect the language of the given text. Return JSON:
+{
+  "detected_language": "<2-letter code: en/hi/mr/ta/te/bn/kn/ml/gu/pa/or/as/ur>",
+  "language_name": "<full name>",
+  "confidence": "high/medium/low",
+  "should_respond_in": "<same code — the agent should reply in this language>"
+}
+Only return the JSON, nothing else."""
+
+        result = generate(text[:200], system)
+        try:
+            parsed = json.loads(result)
+            return json.dumps(parsed)
+        except Exception:
+            return json.dumps({
+                "detected_language": "en",
+                "language_name": "English",
+                "confidence": "low",
+                "should_respond_in": "en",
+                "raw": result,
+            })

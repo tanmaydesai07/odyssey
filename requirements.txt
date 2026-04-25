@@ -1,18 +1,40 @@
+# ── Core agent framework ──────────────────────────────────────────────────
 smolagents>=1.13.0
+
+# ── UI ────────────────────────────────────────────────────────────────────
 gradio>=5.0.0
-pytz
-python-dateutil
-pydantic
-fastapi
-uvicorn
-pymongo
-motor
-python-dotenv
+
+# ── LLM / API ─────────────────────────────────────────────────────────────
 requests
-duckduckgo_search
-markdownify
+python-dotenv
+pytz
+
+# ── RAG / Embeddings ──────────────────────────────────────────────────────
+chromadb
+sentence-transformers
 numpy
 scikit-learn
-sentence-transformers
 faiss-cpu
-chromadb
+
+# ── Web tools ─────────────────────────────────────────────────────────────
+duckduckgo_search
+markdownify
+
+# ── Document generation (DOCX + PDF) ──────────────────────────────────────
+python-docx
+reportlab
+
+# ── Observability (Langfuse — optional, free 50k obs/month) ───────────────
+# Sign up at https://cloud.langfuse.com and add keys to .env to activate
+langfuse
+
+# ── RAG evaluation (run evaluate_rag.py separately, not needed at runtime) ─
+ragas
+datasets
+langchain-openai
+
+# ── Misc utilities ────────────────────────────────────────────────────────
+pydantic
+python-dateutil
+fastapi
+uvicorn
