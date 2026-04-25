@@ -8,12 +8,12 @@ import json
 import os
 from pathlib import Path
 
-# Path to chroma_db - local agent folder first (for HF Spaces), then original location
+# Path to chroma_db - searches relative locations only, no hardcoded user paths
 BASE_DIR = Path(__file__).resolve().parents[1]
 CHROMA_PATHS = [
     BASE_DIR / "chroma_db",
-    BASE_DIR / "rag_v2" / "processed" / "chroma_db",
-    Path("C:/Users/uday0/OneDrive/Desktop/code/odyssey/rag_v2/processed/chroma_db"),
+    BASE_DIR.parent / "rag_v2" / "processed" / "chroma_db",
+    BASE_DIR.parent / "chroma_db",
 ]
 
 CHROMA_DIR = None

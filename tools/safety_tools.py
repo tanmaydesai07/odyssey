@@ -56,17 +56,30 @@ Provide:
 
 class DisclaimerEnforcerTool(Tool):
     name = "disclaimer_enforcer"
-    description = "Ensures legal disclaimers are shown when needed - not legal advice, consult professionals, jurisdiction limitations."
+    description = "Generates a context-aware legal disclaimer. Call this before delivering any legal guidance to ensure the user understands this is process information, not legal advice."
     inputs = {
-        "context": {"type": "string", "description": "Current conversation context"},
+        "context": {"type": "string", "description": "Current conversation context — what topic or advice is being given"},
         "action": {"type": "string", "description": "Action: add, check, remove", "nullable": True}
     }
     output_type = "string"
 
     def forward(self, context: str, action: str = "check") -> str:
-        return json.dumps({
-            "disclaimer_needed": True,
-            "disclaimer_text": "⚠️ IMPORTANT: This is not legal advice. For specific legal matters, please consult a qualified lawyer in your jurisdiction. This tool provides general information only.",
-            "action_taken": action,
-            "shown": action in ["add", "check"]
-        })
+        system = (
+            "You are a legal disclaimer generator for an Indian legal assistance platform. "
+            "Generate a short, plain-language disclaimer (2-3 sentences) tailored to the context. "
+            "It must: (1) state this is process/informational guidance only, not legal advice, "
+            "(2) recommend consulting a qualified advocate for the specific matter, "
+            "(3) mention that laws and procedures may vary by state. "
+            "Return JSON with keys: disclaimer_needed (bool), disclaimer_text (string)."
+        )
+        result = generate(f"Context: {context}", system)
+        try:
+            parsed = json.loads(result)
+            parsed["action_taken"] = action
+            return json.dumps(parsed)
+        except Exception:
+            return json.dumps({
+                "disclaimer_needed": True,
+                "disclaimer_text": result,
+                "action_taken": action,
+            })
