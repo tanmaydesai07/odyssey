@@ -384,11 +384,17 @@ class ZenModel(Model):
                     "role": getattr(msg, "role", "user"),
                     "content": getattr(msg, "content", ""),
                 })
-        return self.__call__(message_dicts, stop_sequences=stop, **kwargs)
+        # Newer smolagents versions pass stop_sequences as a kwarg directly.
+        # Pop it from kwargs to avoid "multiple values for keyword argument" error
+        # when we also pass it explicitly below.
+        stop_sequences = kwargs.pop("stop_sequences", stop)
+        return self.__call__(message_dicts, stop_sequences=stop_sequences, **kwargs)
     
     def generate_stream(self, messages: list, stop: list = None, **kwargs):
         """Streaming not supported for Zen, fallback to regular"""
-        yield self.generate(messages, stop=stop, **kwargs)
+        # Same fix — pop stop_sequences from kwargs to avoid duplicate kwarg error
+        stop_sequences = kwargs.pop("stop_sequences", stop)
+        yield self.generate(messages, stop=stop_sequences, **kwargs)
     
     def get_client(self):
         return self
