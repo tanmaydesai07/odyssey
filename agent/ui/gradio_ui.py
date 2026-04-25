@@ -196,7 +196,12 @@ class GradioUI:
 
                 # --- Final Answer ---
                 elif isinstance(step_log, FinalAnswerStep):
-                    final = step_log.final_answer
+                    # smolagents renamed .final_answer to .output in newer versions
+                    final = (
+                        getattr(step_log, "final_answer", None)
+                        or getattr(step_log, "output", None)
+                        or getattr(step_log, "answer", None)
+                    )
                     if final is not None:
                         answer_text = _clean_text(str(final))
                         messages.append(
