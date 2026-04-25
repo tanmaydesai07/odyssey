@@ -156,6 +156,8 @@ agent = CodeAgent(
     planning_interval=4,
     name="legal_assistant",
     description=SYSTEM_PROMPT,
+    # Increase executor timeout — LLM tool calls (checklist, draft) can take >30s
+    executor_timeout=120,
 )
 
 

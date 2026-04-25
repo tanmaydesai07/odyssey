@@ -4,6 +4,7 @@ Custom OpenAI-compatible model for OpenCode Zen
 import os
 import sys
 import json
+import re
 import requests
 from typing import Any, List, Dict, Optional
 from dotenv import load_dotenv
@@ -25,6 +26,49 @@ except Exception:
     _obs = None
 
 
+def _count_unmatched_parens(code: str) -> int:
+    """Count unmatched open parens in code, ignoring parens inside strings."""
+    depth = 0
+    in_single = False
+    in_double = False
+    i = 0
+    while i < len(code):
+        c = code[i]
+        # Handle escape sequences
+        if c == '\\' and i + 1 < len(code):
+            i += 2
+            continue
+        if c == "'" and not in_double:
+            in_single = not in_single
+        elif c == '"' and not in_single:
+            in_double = not in_double
+        elif not in_single and not in_double:
+            if c == '(':
+                depth += 1
+            elif c == ')':
+                depth -= 1
+        i += 1
+    return depth
+
+
+def _is_string_terminated(line: str) -> bool:
+    """Return True if all string literals on the line are properly closed."""
+    in_single = False
+    in_double = False
+    i = 0
+    while i < len(line):
+        c = line[i]
+        if c == '\\' and i + 1 < len(line):
+            i += 2
+            continue
+        if c == "'" and not in_double:
+            in_single = not in_single
+        elif c == '"' and not in_single:
+            in_double = not in_double
+        i += 1
+    return not in_single and not in_double
+
+
 class ZenModel(Model):
     """OpenCode Zen model - OpenAI compatible API"""
 
@@ -40,11 +84,8 @@ class ZenModel(Model):
         self.base_url = base_url
         self.max_tokens = kwargs.get("max_tokens", 4096)
         self.temperature = kwargs.get("temperature", 0.3)
-
         self.last_input_token_count = 0
         self.last_output_token_count = 0
-
-        # Required for smolagents CodeAgent
         self.custom_role_conversions = {"tool-response": "tool"}
 
         if not self.api_key:
@@ -53,10 +94,7 @@ class ZenModel(Model):
             print(f"[ZenModel] Initialized with model={self.model_id}, base_url={self.base_url}")
 
     def _get_headers(self):
-        return {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
+        return {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
 
     def _serialize_content(self, content):
         if content is None:
@@ -90,60 +128,120 @@ class ZenModel(Model):
             return "user"
         return "user"
 
-    def _fix_truncated_code(self, content: str) -> str:
-        """Fix code blocks that were truncated or malformed by the API.
-
-        Handles these patterns:
-        1. Pure Thought with no code block at all — inject final_answer fallback
-        2. Code: section but no ```py fence — inject the fence
-        3. Has ```py opener but missing closing ```
-        4. Unbalanced parentheses in code
+    # ------------------------------------------------------------------
+    # Code body fixer
+    # ------------------------------------------------------------------
+    def _fix_code_body(self, code: str) -> str:
+        """Fix common issues inside a code block:
+        1. final_answer() with no args — find the variable and inject it
+        2. Unterminated string on last line — close the quote
+        3. Unbalanced parentheses — counted correctly, ignoring parens inside strings
         """
-        import re
+        lines = code.rstrip().split('\n')
+        if not lines:
+            return code
 
-        # ------------------------------------------------------------------ #
-        # Pattern 0: Pure "Thought: ..." with NO Code: section at all.        #
-        # The model forgot to write any code. Inject a final_answer call.     #
-        # This is what causes the infinite "regex pattern not found" loop.    #
-        # ------------------------------------------------------------------ #
+        # Fix 1: final_answer() with no args
+        for i, line in enumerate(lines):
+            if re.match(r'\s*final_answer\(\s*\)\s*$', line):
+                for j in range(i - 1, max(i - 15, -1), -1):
+                    var_match = re.match(r'\s*(\w+)\s*=\s*["\']', lines[j])
+                    if var_match:
+                        var_name = var_match.group(1)
+                        lines[i] = re.sub(r'final_answer\(\s*\)', f'final_answer({var_name})', lines[i])
+                        print(f"[ZenModel._fix_code_body] Fixed final_answer() -> final_answer({var_name})")
+                        break
+
+        # Find last non-empty line index
+        last_idx = len(lines) - 1
+        while last_idx >= 0 and not lines[last_idx].strip():
+            last_idx -= 1
+        if last_idx < 0:
+            return '\n'.join(lines)
+
+        # Fix 2: Unterminated string on last line
+        if not _is_string_terminated(lines[last_idx]):
+            # Figure out which quote type is open
+            in_single = False
+            in_double = False
+            i = 0
+            line = lines[last_idx]
+            while i < len(line):
+                c = line[i]
+                if c == '\\' and i + 1 < len(line):
+                    i += 2
+                    continue
+                if c == "'" and not in_double:
+                    in_single = not in_single
+                elif c == '"' and not in_single:
+                    in_double = not in_double
+                i += 1
+            if in_single:
+                lines[last_idx] = lines[last_idx] + "'"
+                print("[ZenModel._fix_code_body] Fixed unterminated single quote")
+            elif in_double:
+                lines[last_idx] = lines[last_idx] + '"'
+                print("[ZenModel._fix_code_body] Fixed unterminated double quote")
+
+        # Fix 3: Unbalanced parens — count correctly ignoring parens inside strings
+        full_code = '\n'.join(lines)
+        open_parens = _count_unmatched_parens(full_code)
+        if open_parens > 0:
+            lines[last_idx] = lines[last_idx].rstrip() + ')' * open_parens
+            print(f"[ZenModel._fix_code_body] Fixed {open_parens} unclosed parens")
+        elif open_parens < 0:
+            # More closing than opening — strip excess from end
+            excess = abs(open_parens)
+            tail = lines[last_idx].rstrip()
+            while excess > 0 and tail.endswith(')'):
+                tail = tail[:-1]
+                excess -= 1
+            lines[last_idx] = tail
+            print(f"[ZenModel._fix_code_body] Removed {abs(open_parens)} excess closing parens")
+
+        return '\n'.join(lines)
+
+    # ------------------------------------------------------------------
+    # Main code fixer
+    # ------------------------------------------------------------------
+    def _fix_truncated_code(self, content: str) -> str:
+        """Fix code blocks that were truncated or malformed by the API."""
+
         has_code_section = bool(re.search(r'\bCode:\s*\n', content, re.IGNORECASE))
         has_fence_opener = bool(re.search(r'```(?:py|python)\n', content))
         has_end_code = '<end_code>' in content
 
+        # Pattern 0: No code at all — but skip planning steps
         if not has_code_section and not has_fence_opener and not has_end_code:
-            # Pure thought, no code at all — wrap the thought as a final_answer
-            # Escape any quotes in the content
-            safe = content.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
-            injected = (
-                content.rstrip()
-                + '\n\nCode:\n```py\nfinal_answer("'
-                + safe[:800]
-                + '\\n\\nDisclaimer: This is informational guidance only, not legal advice.")\n```<end_code>'
-            )
-            print("[ZenModel._fix_truncated_code] (p0) Injected final_answer for pure-thought response")
-            return injected
+            is_planning = bool(re.search(
+                r'(^#{1,3}\s|^Plan:|^Step \d|^Facts|^Updated facts)',
+                content, re.MULTILINE | re.IGNORECASE
+            ))
+            if not is_planning:
+                safe = content.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
+                injected = (
+                    content.rstrip()
+                    + '\n\nCode:\n```py\nfinal_answer("'
+                    + safe[:800]
+                    + '\\n\\nDisclaimer: This is informational guidance only, not legal advice.")\n```<end_code>'
+                )
+                print("[ZenModel._fix_truncated_code] (p0) Injected final_answer for pure-thought response")
+                return injected
+            return content
 
-        # ------------------------------------------------------------------ #
-        # Pattern 1: "Code:\n\n<code>" but no ```py fence                     #
-        # ------------------------------------------------------------------ #
+        # Pattern 1: Code: section but no fence
         if has_code_section and not has_fence_opener:
             fixed = re.sub(
                 r'(Code:\s*\n\s*)',
                 lambda m: m.group(0) + '```py\n',
-                content,
-                count=1,
-                flags=re.IGNORECASE,
+                content, count=1, flags=re.IGNORECASE,
             )
             fixed = fixed.replace('<end_code>', '').rstrip()
             code_start = re.search(r'```py\n', fixed)
             if code_start:
                 code_body = fixed[code_start.end():]
-                open_parens = code_body.count('(') - code_body.count(')')
-                open_brackets = code_body.count('[') - code_body.count(']')
-                if open_parens > 0:
-                    fixed = fixed.rstrip() + ')' * open_parens
-                if open_brackets > 0:
-                    fixed = fixed.rstrip() + ']' * open_brackets
+                fixed_body = self._fix_code_body(code_body)
+                fixed = fixed[:code_start.end()] + fixed_body
             fixed = fixed.rstrip() + '\n```<end_code>'
             print("[ZenModel._fix_truncated_code] (p1) Injected missing ```py fence")
             return fixed
@@ -151,36 +249,28 @@ class ZenModel(Model):
         if not has_fence_opener:
             return content
 
-        # ------------------------------------------------------------------ #
-        # Patterns 2 & 3: has opener, check for missing closing               #
-        # ------------------------------------------------------------------ #
+        # Patterns 2+: has fence opener — extract code body and fix it
         content_clean = content.replace('<end_code>', '')
         all_opens = list(re.finditer(r'```(?:py|python)\n', content_clean))
         last_open = all_opens[-1]
         before_code = content_clean[:last_open.end()]
         code_after = content_clean[last_open.end():]
 
-        # Check for closing ``` on its own line
-        closing_match = re.search(r'\n```\s*$', code_after, re.MULTILINE)
+        # Strip any existing closing fence from code_after before fixing
+        closing_fence = chr(96) * 3
+        code_body_raw = re.sub(r'\n' + closing_fence + r'\s*$', '', code_after, flags=re.MULTILINE)
 
-        if closing_match:
-            result = content_clean.rstrip() + '<end_code>'
-        else:
-            code_lines = code_after.rstrip().split('\n')
-            full_code = '\n'.join(code_lines)
-            open_parens = full_code.count('(') - full_code.count(')')
-            open_brackets = full_code.count('[') - full_code.count(']')
-            if open_parens > 0:
-                code_lines[-1] = code_lines[-1].rstrip() + ')' * open_parens
-                print(f"[ZenModel._fix_truncated_code] Fixed {open_parens} unclosed parens")
-            if open_brackets > 0:
-                code_lines[-1] = code_lines[-1].rstrip() + ']' * open_brackets
-            fixed_code = '\n'.join(code_lines)
-            result = before_code + fixed_code + '\n```<end_code>'
-            print(f"[ZenModel._fix_truncated_code] Fixed truncated code block, tail: {result[-80:]!r}")
+        fixed_body = self._fix_code_body(code_body_raw)
+        result = before_code + fixed_body + '\n' + closing_fence + '<end_code>'
+
+        if code_body_raw != code_after.rstrip():
+            print(f"[ZenModel._fix_truncated_code] Fixed code body, tail: {result[-80:]!r}")
 
         return result
 
+    # ------------------------------------------------------------------
+    # API call
+    # ------------------------------------------------------------------
     def __call__(
         self,
         messages: List[Dict[str, str]],
@@ -195,26 +285,21 @@ class ZenModel(Model):
         for i, msg in enumerate(messages):
             if msg is None:
                 continue
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            role = self._convert_role(role)
-            content = self._serialize_content(content)
+            role = self._convert_role(msg.get("role", "user"))
+            content = self._serialize_content(msg.get("content", ""))
             print(f"  [msg {i}] role={role}, len={len(content)}, preview={content[:80]!r}...")
             if not content.strip() and role != "system":
                 continue
             api_messages.append({"role": role, "content": content})
 
         if not api_messages:
-            print("[ZenModel.__call__] WARNING: No valid messages.")
             return ChatMessage(
                 role="assistant",
-                content='Thought: No input received.\n\nCode:\n```py\nfinal_answer("Please describe your legal situation.")\n```<end_code>',
+                content='Thought: No input.\n\nCode:\n```py\nfinal_answer("Please describe your legal situation.")\n```<end_code>',
             )
 
-        print(f"[ZenModel.__call__] Sending {len(api_messages)} messages to Zen API...")
-
         if stop_sequences:
-            print(f"[ZenModel.__call__] stop_sequences received (not forwarded): {stop_sequences}")
+            print(f"[ZenModel.__call__] stop_sequences (not forwarded): {stop_sequences}")
 
         import time as _time
         url = f"{self.base_url}/chat/completions"
@@ -228,10 +313,8 @@ class ZenModel(Model):
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                response = requests.post(
-                    url, headers=self._get_headers(), json=payload, timeout=120
-                )
-                print(f"[ZenModel.__call__] Response status: {response.status_code}")
+                response = requests.post(url, headers=self._get_headers(), json=payload, timeout=120)
+                print(f"[ZenModel.__call__] Status: {response.status_code}")
 
                 if response.status_code == 429:
                     wait = min(2 ** attempt * 3, 15)
@@ -240,47 +323,38 @@ class ZenModel(Model):
                     continue
 
                 if response.status_code != 200:
-                    print(f"[ZenModel.__call__] ERROR: {response.status_code} - {response.text[:300]}")
                     return ChatMessage(
                         role="assistant",
-                        content='Thought: API error.\n\nCode:\n```py\nfinal_answer("I encountered a temporary issue. Please try again.")\n```<end_code>',
+                        content='Thought: API error.\n\nCode:\n```py\nfinal_answer("Temporary issue. Please try again.")\n```<end_code>',
                     )
 
                 result = response.json()
                 if not result.get("choices"):
                     return ChatMessage(
                         role="assistant",
-                        content='Thought: No response.\n\nCode:\n```py\nfinal_answer("Could not generate a response. Please try again.")\n```<end_code>',
+                        content='Thought: No response.\n\nCode:\n```py\nfinal_answer("Could not generate response. Please try again.")\n```<end_code>',
                     )
 
                 choice = result["choices"][0]
                 finish_reason = choice.get("finish_reason", "unknown")
-                response_message = choice["message"]
-                content = (
-                    response_message.get("content")
-                    or response_message.get("reasoning_content")
-                    or response_message.get("reasoning")
-                    or ""
-                )
+                rm = choice["message"]
+                content = rm.get("content") or rm.get("reasoning_content") or rm.get("reasoning") or ""
 
                 if not content:
-                    content = 'Thought: Empty response.\n\nCode:\n```py\nfinal_answer("Please describe your legal situation in more detail.")\n```<end_code>'
-                    print("[ZenModel.__call__] WARNING: Empty content, using fallback")
+                    content = 'Thought: Empty.\n\nCode:\n```py\nfinal_answer("Please describe your situation in more detail.")\n```<end_code>'
 
                 usage = result.get("usage", {})
                 if usage:
                     self.last_input_token_count = usage.get("prompt_tokens", 0)
                     self.last_output_token_count = usage.get("completion_tokens", 0)
 
-                print(f"[ZenModel.__call__] SUCCESS: len={len(content)}, tokens_in={self.last_input_token_count}, tokens_out={self.last_output_token_count}, finish={finish_reason}")
+                print(f"[ZenModel.__call__] OK: len={len(content)}, in={self.last_input_token_count}, out={self.last_output_token_count}, finish={finish_reason}")
                 print(f"[ZenModel.__call__] Preview: {content[:200]!r}...")
 
-                # Log to Langfuse if enabled
                 if _obs and _obs.is_enabled():
                     _trace = getattr(self, "_current_trace", None)
                     _obs.log_llm_call(
-                        trace=_trace,
-                        model=self.model_id,
+                        trace=_trace, model=self.model_id,
                         prompt_tokens=self.last_input_token_count,
                         completion_tokens=self.last_output_token_count,
                         input_preview=api_messages[-1].get("content", "")[:300] if api_messages else "",
@@ -288,11 +362,7 @@ class ZenModel(Model):
                     )
 
                 content = self._fix_truncated_code(content)
-
-                return ChatMessage(
-                    role=response_message.get("role", "assistant"),
-                    content=content,
-                )
+                return ChatMessage(role=rm.get("role", "assistant"), content=content)
 
             except requests.exceptions.Timeout:
                 print(f"[ZenModel.__call__] Timeout (attempt {attempt+1}/{max_retries})")
@@ -310,22 +380,16 @@ class ZenModel(Model):
                     continue
                 return ChatMessage(
                     role="assistant",
-                    content='Thought: Connection error.\n\nCode:\n```py\nfinal_answer("Connection error. Please check your internet and try again.")\n```<end_code>',
+                    content='Thought: Connection error.\n\nCode:\n```py\nfinal_answer("Connection error. Please check your internet.")\n```<end_code>',
                 )
             except Exception as e:
-                print(f"[ZenModel.__call__] Unexpected error: {type(e).__name__}: {e}")
+                print(f"[ZenModel.__call__] Error: {type(e).__name__}: {e}")
                 return ChatMessage(
                     role="assistant",
-                    content=f'Thought: Error: {str(e)}\n\nCode:\n```py\nfinal_answer("An error occurred. Please try again.")\n```<end_code>',
+                    content='Thought: Error.\n\nCode:\n```py\nfinal_answer("An error occurred. Please try again.")\n```<end_code>',
                 )
 
-    def generate(
-        self,
-        messages: list,
-        stop: list = None,
-        **kwargs,
-    ) -> ChatMessage:
-        """Compatibility wrapper - delegates to __call__"""
+    def generate(self, messages: list, stop: list = None, **kwargs) -> ChatMessage:
         message_dicts = []
         for msg in messages:
             if msg is None:
@@ -333,16 +397,11 @@ class ZenModel(Model):
             if isinstance(msg, dict):
                 message_dicts.append(msg)
             else:
-                message_dicts.append({
-                    "role": getattr(msg, "role", "user"),
-                    "content": getattr(msg, "content", ""),
-                })
-        # Newer smolagents passes stop_sequences as a kwarg — pop to avoid duplicate
+                message_dicts.append({"role": getattr(msg, "role", "user"), "content": getattr(msg, "content", "")})
         stop_sequences = kwargs.pop("stop_sequences", stop)
         return self.__call__(message_dicts, stop_sequences=stop_sequences, **kwargs)
 
     def generate_stream(self, messages: list, stop: list = None, **kwargs):
-        """Streaming not supported — fallback to regular"""
         stop_sequences = kwargs.pop("stop_sequences", stop)
         yield self.generate(messages, stop=stop_sequences, **kwargs)
 
@@ -354,6 +413,5 @@ if __name__ == "__main__":
     from dotenv import load_dotenv
     load_dotenv()
     model = ZenModel(model_id="minimax-m2.5-free")
-    messages = [{"role": "user", "content": "What is 2+2? Reply in one word."}]
-    resp = model(messages)
+    resp = model([{"role": "user", "content": "What is 2+2? Reply in one word."}])
     print(f"\nTest result: {resp.content}")

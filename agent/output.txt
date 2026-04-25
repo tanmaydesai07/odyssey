@@ -1,0 +1,739 @@
+user: Sahil scammeed me for 50k took in name of investment and nvere gave 
+
+assistant: *Plan:*
+I still need to solve the task I was given:
+
+Sahil scammeed me for 50k took in name of investment and nvere gave 
+
+
+
+Here are the facts I know and my new/updated plan of action to solve the task:
+
+## 1. Updated facts survey
+
+### 1.1. Facts given in the task
+- **Victim:** User who was scammed
+- **Perpetrator:** A person named "Sahil"
+- **Amount lost:** ₹50,000 (50k)
+- **Method of scam:** Fraudulent investment scheme
+- **Issue:** Sahil took money in the name of investment but never gave any returns or returned the principal
+
+### 1.2. Facts that we have learned
+- This appears to be a case of fraud/cheating where money was induced through false promises of investment returns
+- The user did not receive any promised returns or their principal back
+- No resolution has been attempted yet based on the limited information
+
+### 1.3. Facts still to look up
+- User's location (state and city) to determine jurisdiction
+- Full details of the transaction (date, mode of payment, evidence)
+- Whether any written agreement, screenshots, messages, or receipts exist
+- Sahil's full name, contact details, or address (if known)
+- Whether the user has communicated with Sahil about returning money
+
+### 1.4. Facts still to derive
+- Exact classification: This is likely **fraud/cheating** (Section 420 IPC or BNS) or **criminal breach of trust**
+- Appropriate police station and jurisdiction
+- Strength of case based on available evidence
+- Legal remedies and step-by-step process
+
+---
+
+## 2. Plan
+
+### 2.1. Gather missing critical information
+- Ask the user for their location (state/city), date of incident, and any evidence they have (messages, bank receipts, etc.)
+
+### 2.2. Classify the case
+- Use `case_classifier` to categorize this as criminal fraud/cheating case
+
+### 2.3. Resolve jurisdiction
+- Use `jurisdiction_resolver` to find the appropriate police station based on user's location
+
+### 2.4. Assess case strength
+- Use `complaint_strength_analyser` to evaluate the evidence and likelihood of success
+
+### 2.5. Provide legal workflow
+- Use `workflow_planner` to create a step-by-step process for filing an FIR or complaint
+
+### 2.6. Guide on next steps
+- Explain the options: file an FIR at police station, approach cyber crime cell (if online), or civil recovery
+
+### 2.7. Generate draft if needed
+- If user wants to file a complaint, use `draft_generator` to create an FIR or complaint draft
+
+Code:
+py
+final_answer("## 1. Updated facts survey\n\n### 1.1. Facts given in the task\n- *Victim:* User who was scammed\n- *Perpetrator:* A person named \"Sahil\"\n- *Amount lost:* ₹50,000 (50k)\n- *Method of scam:* Fraudulent investment scheme\n- *Issue:* Sahil took money in the name of investment but never gave any returns or returned the principal\n\n### 1.2. Facts that we have learned\n- This appears to be a case of fraud/cheating where money was induced through false promises of investment returns\n- The user did not receive any promised returns or their principal back\n- No resolution has been attempted yet based on the limited information\n\n### 1.3. Facts still to look up\n- User's location (state and city) to determine jurisdiction\n- Full details of the transaction (date, mode of payment, evi\n\nDisclaimer: This is informational guidance only, not legal advice.")
+<end_code>
+
+
+assistant: I'll proceed with the plan. First, I need to gather some critical missing information from you to properly assess your case.
+
+Code:
+py
+intake_analyzer(user_input="Sahil scammeed me for 50k took in name of investment and nvere gave", case_type="unknown")
+<end_code></code>
+
+assistant: *Tool:* python_interpreter
+*Args:* intake_analyzer(user_input="Sahil scammeed me for 50k took in name of investment and nvere gave", case_type="unknown")
+
+assistant: 
+Execution logs:
+Last output from code snippet:
+json
+{
+  "extracted_facts": {
+    "who": "Sahil (opposite party/scammer). Complaint filed by: User name not provided",
+    "what": "Sahil took Rs. 50,000 in the name of investment but never gave any returns or refunded the money - appears to be investment fraud/scam",
+    "when": "Date not provided",
+    "where": {
+      "city": "Not provided",
+      "state": "Not provided"
+    },
+    "evidence": "Not provided - no proof mentioned",
+    "desired_outcome": "Refund of Rs. 50,000 (implied from 'never gave' - user wants their money back)",
+    "amount": "Rs. 50,000"
+  },
+  "missing_fields": [
+    "city",
+    "state",
+    "date of incident",
+    "user name",
+    "evidence/details of transaction"
+  ],
+  "clarification_needed": true,
+  "follow_up_questions": [
+    "Which city and state did this happen in? (CRITICAL - needed for jurisdiction)",
+    "When exactly did this investment happen?",
+    "What is your name? (needed to file complaint)",
+    "How did you make the payment - cash, bank transfer, UPI, etc.? Do you have any proof like transaction records?"
+  ],
+  "ready_to_proceed": false
+}
+
+```
+
+assistant: I can see from the intake analyzer that we need some critical information to proceed. Let me gather this from you first.
+
+Code:
+py
+answer = "I can see this is a case of investment fraud. To proceed with helping you, I need some essential information:\n\n*Please provide:\n1. **Your location* - Which city and state? (needed for jurisdiction)\n2. *When* did this happen? (approximate date)\n3. *How did you pay* - cash, bank transfer, UPI, phone pay, etc.? Do you have any proof?\n4. *Your name* - What should I mention in the complaint?\n\nOnce you provide these, I can:\n- Classify the case properly\n- Find the right police station/jurisdiction\n- Evaluate your case strength\n- Guide you on filing a complaint\n\nPlease reply with these details."
+final_answer()
+<end_code></code>
+
+assistant: **Tool:** `python_interpreter`
+**Args:** answer = "I can see this is a case of investment fraud. To proceed with helping you, I need some essential information:\n\n**Please provide:**\n1. **Your location** - Which city and state? (needed for jurisdiction)\n2. **When** did this happen? (approximate date)\n3. **How did you pay** - cash, bank
+
+assistant: Error: Code execution failed at line 'final_answer()' due to: TypeError: FinalAnswerTool.forward() missing 1 required positional argument: 'answer'
+
+assistant: Let me fix that error and provide the response:
+
+Code:
+py
+final_answer("I can see this is a case of investment fraud. To proceed with helping you, I need some essential information:\n\n*Please provide:\n1. **Your location* - Which city and state? (needed for jurisdiction)\n2. *When* did this happen? (approximate date)\n3. *How did you pay* - cash, bank transfer, UPI, phone pay, etc.? Do you have any proof?\n4. *Your name* - What should I mention in the complaint?\n\nOnce you provide these, I can:\n- Classify the case properly\n- Find the right police station/jurisdiction\n- Evaluate your case strength\n- Guide you on filing a complaint\n\nPlease reply with these details)
+<end_code></code>
+
+assistant: **Tool:** `python_interpreter`
+**Args:** final_answer("I can see this is a case of investment fraud. To proceed with helping you, I need some essential information:\n\n**Please provide:**\n1. **Your location** - Which city and state? (needed for jurisdiction)\n2. **When** did this happen? (approximate date)\n3. **How did you pay** - cash, 
+
+assistant: Error: Code parsing failed on line 1 due to: SyntaxError: unterminated string literal (detected at line 1) (<unknown>, line 1)
+final_answer("I can see this is a case of investment fraud. To proceed with helping you, I need some essential information:\n\n**Please provide:**\n1. **Your location** - Which city and state? (needed for jurisdiction)\n2. **When** did this happen? (approximate date)\n3. **How did you pay** - cash, bank transfer, UPI, phone pay, etc.? Do you have any proof?\n4. **Your name** - What should I mention in the complaint?\n\nOnce you provide these, I can:\n- Classify the case properly\n- Find the right police station/jurisdiction\n- Evaluate your case strength\n- Guide you on filing a complaint\n\nPlease reply with these details)              ^
+
+assistant: Let me fix the syntax error:
+
+Code:
+py
+final_answer("I can see this is a case of investment fraud. To proceed with helping you, I need some essential information:\n\nPlease provide:\n1. Your location - Which city and state? (needed for jurisdiction)\n2. When did this happen? (approximate date)\n3. How did you pay - cash, bank transfer, UPI, phone pay, etc.? Do you have any proof?\n4. Your name - What should I mention in the complaint?\n\nOnce you provide these, I can:\n- Classify the case properly\n- Find the right police station/jurisdiction\n- Evaluate your case strength\n- Guide you on filing a complaint\n\nPlease reply with these details")
+<end_code></code>
+
+assistant: **Tool:** `python_interpreter`
+**Args:** final_answer("I can see this is a case of investment fraud. To proceed with helping you, I need some essential information:\n\nPlease provide:\n1. Your location - Which city and state? (needed for jurisdiction)\n2. When did this happen? (approximate date)\n3. How did you pay - cash, bank transfer, U
+
+assistant: 
+Execution logs:
+Last output from code snippet:
+I can see this is a case of investment fraud. To proceed with helping you, I need some essential information:
+
+Please provide:
+1. Your location - Which city and state? (needed for jurisdiction)
+2. When did this happen? (approximate date)
+3. How did you pay - cash, bank transfer, UPI, phone pay, etc.? Do you have any proof?
+4. Your name - What should I mention in the complaint?
+
+Once you provide these, I can:
+- Classify the case properly
+- Find the right police station/jurisdiction
+- Evaluate your case strength
+- Guide you on filing a complaint
+
+Please reply with these details
+
+
+assistant: I can see this is a case of investment fraud. To proceed with helping you, I need some essential information:
+
+Please provide:
+1. Your location - Which city and state? (needed for jurisdiction)
+2. When did this happen? (approximate date)
+3. How did you pay - cash, bank transfer, UPI, phone pay, etc.? Do you have any proof?
+4. Your name - What should I mention in the complaint?
+
+Once you provide these, I can:
+- Classify the case properly
+- Find the right police station/jurisdiction
+- Evaluate your case strength
+- Guide you on filing a complaint
+
+Please reply with these details
+
+user: I live in Mapusa sahil lives in verna. This happenned last year i paid using gpay
+
+assistant: **Plan:**
+I still need to solve the task I was given:
+
+I live in Mapusa sahil lives in verna. This happenned last year i paid using gpay
+
+
+
+Here are the facts I know and my new/updated plan of action to solve the task:
+
+## 1. Updated facts survey
+
+### 1.1. Facts given in the task
+- *Complainant*: User lives in Mapusa, Goa
+- *Opposite Party*: Sahil (lives in Verna, Goa)
+- *Incident*: Investment fraud - took Rs. 50,000 in the name of investment but never gave returns or refund
+- *Time*: Last year (approximately 2023-2024)
+- *Payment Method*: GPay (UPI transfer)
+- *Amount*: Rs. 50,000
+
+### 1.2. Facts that we have learned
+- This is a case of *investment fraud/cheating* - potentially IPC Section 420 (cheating and dishonestly inducing delivery of property)
+- Jurisdiction: *Goa* (Mapusa and Verna are both in North Goa district, Goa)
+- Since GPay was used, this may also involve *cyber fraud* elements
+
+### 1.3. Facts still to look up
+- Exact date of incident (to calculate limitation period)
+- Whether user has any transaction proof/UPI transaction ID
+- Whether any written promises or agreements exist
+- Any communication records with Sahil
+
+### 1.4. Facts still to derive
+- Police station jurisdiction for Mapusa area
+- Whether to file with local police or cyber crime branch
+- Case strength assessment based on available evidence
+
+## 2. Plan
+
+### 2.1. Classify the case type
+- Determine if this is a criminal fraud case (IPC 420) or cyber fraud
+
+### 2.2. Resolve jurisdiction
+- Find the appropriate police station for Mapusa, Goa
+- Identify if cyber crime branch has jurisdiction
+
+### 2.3. Assess case strength
+- Evaluate evidence available (UPI transaction details)
+- determine likelihood of recovery
+
+### 2.4. Guide for complaint filing
+- Provide steps to file FIR or complaint
+- Explain required documents
+
+### 2.5. Provide legal options
+- Explain possible remedies and
+
+Code:
+py
+final_answer("## 1. Updated facts survey\n\n### 1.1. Facts given in the task\n- **Complainant**: User lives in Mapusa, Goa\n- **Opposite Party**: Sahil (lives in Verna, Goa)\n- **Incident**: Investment fraud - took Rs. 50,000 in the name of investment but never gave returns or refund\n- **Time**: Last year (approximately 2023-2024)\n- **Payment Method**: GPay (UPI transfer)\n- **Amount**: Rs. 50,000\n\n### 1.2. Facts that we have learned\n- This is a case of **investment fraud/cheating** - potentially IPC Section 420 (cheating and dishonestly inducing delivery of property)\n- Jurisdiction: **Goa** (Mapusa and Verna are both in North Goa district, Goa)\n- Since GPay was used, this may also involve **cyber fraud** elements\n\n### 1.3. Facts still to look up\n- Exact date of incident (to calculate limitati\n\nDisclaimer: This is informational guidance only, not legal advice.")
+<end_code>
+
+
+assistant: Now I'll proceed with the plan. Let me classify the case and resolve jurisdiction.
+
+Code:
+py
+case_classifier(situation_description="Sahil took Rs. 50,000 from me in name of investment through GPay last year. I live in Mapusa, Goa and Sahil lives in Verna, Goa. He promised returns but never gave anything - not even refunded my principal. This is investment fraud.")
+<end_code></code>
+
+assistant: **Tool:** `python_interpreter`
+**Args:** case_classifier(situation_description="Sahil took Rs. 50,000 from me in name of investment through GPay last year. I live in Mapusa, Goa and Sahil lives in Verna, Goa. He promised returns but never gave anything - not even refunded my principal. This is investment fraud.")
+
+assistant: 
+Execution logs:
+Last output from code snippet:
+json
+{
+  "case_type": "fir",
+  "confidence": 0.78,
+  "brief_reasoning": "Taking money through GPay with promises of investment returns, then neither delivering returns nor refunding principal, constitutes potential cheating (BNS Section 318 / IPC 420) and criminal breach of trust (BNS Section 316 / IPC 406). Both parties being in Goa (Mapusa and Verna) establishes territorial jurisdiction. The key question is whether there was intent to deceive at the time of receiving money, which can be inferred from the complete non-performance and refusal to refund."
+}
+
+
+
+assistant: Now let me resolve jurisdiction for this case in Goa:
+
+Code:
+py
+jurisdiction_resolver(state="Goa", city="Mapusa", case_type="fir", amount_in_dispute=50000)
+<end_code></code>
+
+assistant: **Tool:** `python_interpreter`
+**Args:** jurisdiction_resolver(state="Goa", city="Mapusa", case_type="fir", amount_in_dispute=50000)
+
+assistant: 
+Execution logs:
+Last output from code snippet:
+json
+{
+  "case_details": {
+    "state": "Goa",
+    "city": "Mapusa",
+    "case_type": "FIR (First Information Report)",
+    "amount_in_dispute": 50000,
+    "jurisdiction_type": "Criminal"
+  },
+  "recommended_authorities": [
+    {
+      "level": 1,
+      "authority_name": "Mapusa Police Station",
+      "address": "Mapusa, North Goa District, Goa - 403507",
+      "jurisdiction": "Primary - First to file FIR for any criminal offense occurring within Mapusa and surrounding areas",
+      "contact_mode": "Visit in person or call 100 for emergency"
+    },
+    {
+      "level": 2,
+      "authority_name": "North Goa Superintendent of Police (SP)",
+      "address": "Police Headquarters, Panaji, Goa - 403001",
+      "jurisdiction": "Supervisory - If Mapusa Police fails to register FIR or take action",
+      "contact_mode": "Written complaint/.application under Section 154/156(3) CrPC"
+    },
+    {
+      "level": 3,
+      "authority_name": "Chief Judicial Magistrate, North Goa District",
+      "address": "North Goa District Court Complex, Mapusa, Goa",
+      "jurisdiction": "Magisterial - For direction to register FIR under Section 156(3) CrPC if police refuse",
+      "contact_mode": "Apply for direction to police via criminal complaint"
+    },
+    {
+      "level": 4,
+      "authority_name": "High Court of Bombay at Goa (Goa Bench)",
+      "address": "EC-32, 35, Goa - 403001 (Near Fort Aguada, Bardez)",
+      "jurisdiction": "Appellate/Con
+
+... (truncated)
+
+
+assistant: Now let me find the cyber crime authority as well since the payment was made via GPay (digital/online):
+
+Code:
+py
+authority_finder(authority_type="cyber_crime", jurisdiction="Goa, Map)
+<end_code></code>
+
+assistant: *Tool:* python_interpreter
+*Args:* authority_finder(authority_type="cyber_crime", jurisdiction="Goa, Map)
+
+assistant: Error: Code parsing failed on line 1 due to: SyntaxError: unterminated string literal (detected at line 1) (<unknown>, line 1)
+authority_finder(authority_type="cyber_crime", jurisdiction="Goa, Map)                                                             ^
+
+assistant: Let me fix the syntax error:
+
+Code:
+py
+authority_finder(authority_type="cyber_crime", jurisdiction="Goa, Mapusa)
+<end_code></code>
+
+assistant: *Tool:* python_interpreter
+*Args:* authority_finder(authority_type="cyber_crime", jurisdiction="Goa, Mapusa)
+
+assistant: Error: Code parsing failed on line 1 due to: SyntaxError: unterminated string literal (detected at line 1) (<unknown>, line 1)
+authority_finder(authority_type="cyber_crime", jurisdiction="Goa, Mapusa)                                                             ^
+
+assistant: *Plan:*
+I still need to solve the task I was given:
+
+I live in Mapusa sahil lives in verna. This happenned last year i paid using gpay
+
+
+
+Here are the facts I know and my new/updated plan of action to solve the task:
+
+## 1. Updated Facts Survey
+
+### 1.1. Facts Given in the Task
+- **Complainant**: User (name not provided) - resides in Mapusa, Goa
+- **Opposite Party**: Sahil - resides in Verna, Goa
+- **Incident**: Investment fraud - took Rs. 50,000 in name of investment, never gave returns or refunded principal
+- **Date**: Last year (approximately 2023)
+- **Payment Method**: GPay (digital payment)
+- **Location**: Both parties in Goa - Mapusa and Verna
+
+### 1.2. Facts that We Have Learned
+- **Case Type**: FIR (First Information Report) - potential cheating (BNS Section 318 / IPC 420) and criminal breach of trust (BNS Section 316 / IPC 406)
+- **Jurisdiction**: Mapusa Police Station, North Goa District, Goa
+- **Amount**: Rs. 50,000 - determines offense gravity
+- **Recommended Authorities**:
+  1. Mapusa Police Station (primary)
+  2. North Goa Superintendent of Police (escalation)
+  3. Chief Judicial Magistrate, North Goa (if police refuse FIR)
+  4. High Court of Bombay at Goa (appellate)
+
+### 1.3. Facts Still to Look Up
+- Cyber crime authority contact details for Goa (earlier attempt failed)
+- Exact FIR filing procedure at Mapusa Police Station
+- Evidence requirements for GPay-based fraud
+
+### 1.4. Facts Still to Derive
+- User's name (for complaint draft)
+- GPay transaction reference/records availability
+- Case strength analysis
+
+---
+
+## 2. Plan
+
+### 2.1. Find Cyber Crime Authority for Goa
+- Use authority_finder to get cyber crime unit contact details for Goa, Mapusa
+
+### 2.2. Retrieve FIR Filing Procedure
+- Use legal_retriever to get FIR filing procedure under BNS/IPC for cheating/fraud in Goa
+
+### 2.3. Generate FIR Draft
+- Use draft_generator with template "fir" and the extracted facts to create a printable FIR complaint
+
+### 2.4. Generate Documents Checklist
+- Use checklist_generator for "filing FIR" in Goa to provide document requirements
+
+### 2.5. Analyze Case Strength
+- Use complaint_strength_analyser to evaluate the user's case based on available evidence
+
+### 2.6. Provide Final Guidance
+- Use final_answer to provide complete next steps to user
+
+Code:
+py
+final_answer("## 1. Updated Facts Survey\n\n### 1.1. Facts Given in the Task\n- *Complainant: User (name not provided) - resides in Mapusa, Goa\n- **Opposite Party: Sahil - resides in Verna, Goa\n- **Incident: Investment fraud - took Rs. 50,000 in name of investment, never gave returns or refunded principal\n- **Date: Last year (approximately 2023)\n- **Payment Method: GPay (digital payment)\n- **Location: Both parties in Goa - Mapusa and Verna\n\n### 1.2. Facts that We Have Learned\n- **Case Type: FIR (First Information Report) - potential cheating (BNS Section 318 / IPC 420) and criminal breach of trust (BNS Section 316 / IPC 406)\n- **Jurisdiction: Mapusa Police Station, North Goa District, Goa\n- **Amount: Rs. 50,000 - determines offense gravity\n- **Recommended Authorities*:\n  \n\nDisclaimer: This is informational guidance only, not legal advice.")
+<end_code>
+
+
+assistant: Now I'll proceed with the plan. Let me find the cyber crime authority for Goa:
+
+Code:
+py
+authority_finder(authority_type="cyber_crime", jurisdiction="Goa")
+<end_code></code>
+
+assistant: *Tool:* python_interpreter
+*Args:* authority_finder(authority_type="cyber_crime", jurisdiction="Goa")
+
+assistant: 
+Execution logs:
+Last output from code snippet:
+json
+{
+  "authority_name": "Goa Police Cyber Crime Cell / Cyber Police Station, Goa",
+  "address": "Anti-Cyber Crime Cell, Goa Police Headquarters, Near Azad Maidan, Panaji - Goa 403001",
+  "phone": "+91-832-2420810, +91-832-2426200",
+  "helpline": "1930 (National Cyber Crime Helpline), 1800-233-0000 (Goa Police Toll Free)",
+  "portal_url": "https://cybercrime.gov.in, https://goapolice.gov.in",
+  "office_hours": "Monday to Friday: 9:30 AM - 6:00 PM, Saturday: 9:30 AM - 1:00 PM",
+  "what_to_bring": [
+    "Valid ID proof (Aadhaar Card/Passport/Voter ID)",
+    "Original device used for the crime (mobile/computer)",
+    "Screenshots of offending content with timestamps",
+    "Written complaint describing the incident in detail",
+    "Email headers if email-related crime",
+    "Bank statements showing unauthorized transactions",
+    "Any correspondence with perpetrator",
+    "Two passport-size photographs"
+  ],
+  "approach_tips": [
+    "If they refuse to accept: Say 'I want to file a formal FIR under Section 154 CrPC for cyber crime as per IT Act 2000. Please provide me with a written acknowledgment of my complaint.'",
+    "Demand Reference Number: 'Please provide me with a diary number/FIR number for my complaint reference.'",
+    "Invoke Section 66A IT Act: Mention the specific sections of IT Act violated.",
+    "If still refused: Submit written complaint to Superintendent of Police (SP) or Commissioner of Police.",
+    "Use Nati
+
+... (truncated)
+
+
+assistant: Now let me get the checklist for filing FIR and legal information:
+
+Code:
+py
+checklist_generator(workflow_step="filing FIR at police station", case_type="fir", jurisdiction="Goa, Mapusa")
+<end_code></code>
+
+assistant: **Tool:** `python_interpreter`
+**Args:** checklist_generator(workflow_step="filing FIR at police station", case_type="fir", jurisdiction="Goa, Mapusa")
+
+assistant: Error: Code execution exceeded the maximum execution time of 30 seconds
+
+assistant: Let me generate the FIR draft and then provide you with the complete guidance:
+
+Code:
+py
+draft_generator(template_type="fir", extracted_facts='{"complainant_name": "User (provide your name)", "address": "Mapusa, Goa", "incident_date": "Last year (approximately 2023)", "what_happened": "Sahil (name of opposite party, possibly full name if known) took Rs. 50,000 from me in the name of investment via GPay. He promised high returns but never gave any returns or refunded my principal amount. This is investment fraud.", "opposite_party": "Sahil ( resides in Verna, Goa)", "evidence": "GPay transaction proof, UPI transfer records, any messages or promises made by Sahil", "amount": "Rs. 50,000", "desired_remedy": "Registration of FIR, investigation, recovery of money"}, language="en)
+<end_code></code>
+
+assistant: **Tool:** `python_interpreter`
+**Args:** draft_generator(template_type="fir", extracted_facts='{"complainant_name": "User (provide your name)", "address": "Mapusa, Goa", "incident_date": "Last year (approximately 2023)", "what_happened": "Sahil (name of opposite party, possibly full name if known) took Rs. 50,000 from me in the name of inv
+
+assistant: Error: Code parsing failed on line 1 due to: SyntaxError: unterminated string literal (detected at line 1) (<unknown>, line 1)
+draft_generator(template_type="fir", extracted_facts='{"complainant_name": "User (provide your name)", "address": "Mapusa, Goa", "incident_date": "Last year (approximately 2023)", "what_happened": "Sahil (name of opposite party, possibly full name if known) took Rs. 50,000 from me in the name of investment via GPay. He promised high returns but never gave any returns or refunded my principal amount. This is investment fraud.", "opposite_party": "Sahil ( resides in Verna, Goa)", "evidence": "GPay transaction proof, UPI transfer records, any messages or promises made by Sahil", "amount": "Rs. 50,000", "desired_remedy": "Registration of FIR, investigation, recovery of money"}, language="en)                                                      ^
+
+assistant: Let me fix the syntax error with proper string formatting:
+
+Code:
+py
+draft_generator(template_type="fir", extracted_facts='{"complainant_name": "Your Name", "address": "Mapusa, Goa", "incident_date": "Last year 2023", "what_happened": "Sahil took Rs 50,000 in name of investment via GPay. He promised returns but never gave any returns or refunded principal. This is fraud.", "opposite_party": "Sahil, Verna Goa", "evidence": "GPay transaction records", "amount": "Rs 50,000", "desired_remedy": "FIR registration and recovery"', language="en")
+<end_code></code>
+
+assistant: **Tool:** `python_interpreter`
+**Args:** draft_generator(template_type="fir", extracted_facts='{"complainant_name": "Your Name", "address": "Mapusa, Goa", "incident_date": "Last year 2023", "what_happened": "Sahil took Rs 50,000 in name of investment via GPay. He promised returns but never gave any returns or refunded principal. This is fr
+
+assistant: 
+Execution logs:
+Last output from code snippet:
+{"draft_id": "bddb193d7fe8", "template_type": "fir", "language": "en", "draft_text": "# FIRST INFORMATION REPORT (FIR)\n\n---\n\n*To,\nThe Station House Officer,\nMapusa Police Station,\nMapusa, Goa \u2013 403507\n\n---\n\nSubject:* Complaint regarding Cheating and Criminal Breach of Trust \u2013 Registration of First Information Report against Sahil (Residing at Verna, Goa)\n\n---\n\n*Respectfully Submitted By:\n\nName:* Your Name\n*Address:* Mapusa, Goa\n*Contact Number:* [To be provided by complainant]\n*Email:* [To be provided by complainant]\n\n---\n\n### FACTS OF THE CASE\n\n1. That the Complainant, Your Name, is a bonafide resident of Mapusa, Goa, and is filing this complaint in his/her personal capacity against one Sahil (Full Name Unknown), currently residing at Verna, Goa.\n\n2. That in the year 2023, the Complainant was approached by the Opposite Party, Sahil, who solicited an investment opportunity, promising lucrative returns on the invested amount.\n\n3. That based on the representations and assurances made by the Opposite Party regarding profitable returns, the Complainant, in good faith, transferred a sum of *Rs. 50,000/- (Rupees Fifty Thousand Only)* via Google Pay (GPay) to the Opposite Party in the year 2023.\n\n4. That the Opposite Party, Sahil, had assured the Complainant that the said amount would be utilized for investment purposes and that substantial returns would be provided within a 
+
+... (truncated)
+
+
+assistant: **Plan:**
+I still need to solve the task I was given:
+
+I live in Mapusa sahil lives in verna. This happenned last year i paid using gpay
+
+
+
+Here are the facts I know and my new/updated plan of action to solve the task:
+
+## 1. Updated Facts Survey
+
+### 1.1. Facts given in the task
+- *Who*: User lives in Mapusa, Goa; Sahil (scammer) lives in Verna, Goa
+- *What*: Sahil took Rs. 50,000 in the name of investment via GPay but never gave any returns or refunded the principal
+- *When*: Last year (approximately 2023)
+- *How*: Payment made via GPay (Google Pay)
+- *Desired outcome*: Recovery of Rs. 50,000 (implied)
+
+### 1.2. Facts that we have learned
+- *Case type*: FIR (criminal case) - investment fraud
+- *Applicable sections*: IPC 420 (Cheating), IPC 406 (Criminal breach of trust) / BNS Section 318, 316
+- *Jurisdiction*: Mapusa Police Station, North Goa District, Goa
+- *Cyber crime cell*: Goa Police Cyber Crime Cell in Panaji also relevant (digital payment fraud)
+- *Draft FIR generated*: Complete FIR draft prepared with draft_id='bddb193d7fe8'
+
+### 1.3. Facts still to look up
+- Exact date of incident (needed for FIR)
+- Full name of Sahil (if available)
+- Any additional evidence: GPay transaction ID, screenshots of promises, communication history
+- User's full name (needed for complaint)
+
+### 1.4. Facts still to derive
+- Case strength analysis based on available evidence
+- Specific documents checklist for filing
+- Next steps after FIR filing
+
+---
+
+## 2. Plan
+
+### 2.1. Request user to provide missing critical information (exact date, full name, transaction proof availability)
+
+### 2.2. Analyze case strength using complaint_strength_analyser with the known facts
+
+### 2.3. Generate checklist of required documents using checklist_generator for filing FIR at Mapusa Police Station
+
+### 2.4. Provide guidance on how to file the FIR (online via cybercrime.gov.in as backup + visit to Mapusa Police Station)
+
+### 2.5. Explain escalation path if police refuse to register FIR (Section 156(3) CrPC application to Chief Judicial Magistrate)
+
+### 2.6. Advise on preserving evidence (GPay transaction records, messages with Sahil)
+
+<end_plan>
+
+Code:
+py
+final_answer("## 1. Updated Facts Survey\n\n### 1.1. Facts given in the task\n- **Who**: User lives in Mapusa, Goa; Sahil (scammer) lives in Verna, Goa\n- **What**: Sahil took Rs. 50,000 in the name of investment via GPay but never gave any returns or refunded the principal\n- **When**: Last year (approximately 2023)\n- **How**: Payment made via GPay (Google Pay)\n- **Desired outcome**: Recovery of Rs. 50,000 (implied)\n\n### 1.2. Facts that we have learned\n- **Case type**: FIR (criminal case) - investment fraud\n- **Applicable sections**: IPC 420 (Cheating), IPC 406 (Criminal breach of trust) / BNS Section 318, 316\n- **Jurisdiction**: Mapusa Police Station, North Goa District, Goa\n- **Cyber crime cell**: Goa Police Cyber Crime Cell in Panaji also relevant (digital payment fraud)\n- **Draft FIR gener\n\nDisclaimer: This is informational guidance only, not legal advice.")
+<end_code>
+
+
+assistant: Let me analyze the case strength and provide you with the complete guidance:
+
+Code:
+py
+complaint_strength_analyser(case_type="fir", facts="Sahil took Rs. 50,000 from me in Mapusa, Goa via GPay last year in name of investment. He promised returns but never gave anything. I have GPay transaction proof. Sahil lives in Verna, Goa. I have not filed any complaint)
+<end_code></code>
+
+assistant: **Tool:** `python_interpreter`
+**Args:** complaint_strength_analyser(case_type="fir", facts="Sahil took Rs. 50,000 from me in Mapusa, Goa via GPay last year in name of investment. He promised returns but never gave anything. I have GPay transaction proof. Sahil lives in Verna, Goa. I have not filed any complaint)
+
+assistant: Error: Code parsing failed on line 1 due to: SyntaxError: unterminated string literal (detected at line 1) (<unknown>, line 1)
+complaint_strength_analyser(case_type="fir", facts="Sahil took Rs. 50,000 from me in Mapusa, Goa via GPay last year in name of investment. He promised returns but never gave anything. I have GPay transaction proof. Sahil lives in Verna, Goa. I have not filed any complaint)                                                    ^
+
+assistant: Let me fix the syntax error:
+
+Code:
+py
+complaint_strength_analyser(case_type="fir", facts="Sahil took Rs 50000 from me in Mapusa Goa via GPay last year in name of investment. He promised returns but never gave anything. I have GPay transaction proof. Sahil lives in Verna Goa.")
+<end_code></code>
+
+assistant: **Tool:** `python_interpreter`
+**Args:** complaint_strength_analyser(case_type="fir", facts="Sahil took Rs 50000 from me in Mapusa Goa via GPay last year in name of investment. He promised returns but never gave anything. I have GPay transaction proof. Sahil lives in Verna Goa.")
+
+assistant: 
+Execution logs:
+Last output from code snippet:
+{"analysis": "json\n{\n  \"strength_score\": 7,\n  \"strength_label\": \"Moderate\",\n  \"what_works_in_your_favour\": [\n    \"GPay transaction proof provides clear digital trail with date, amount, and recipient details\",\n    \"Specific accused person (Sahil) with known residential address in Verna Goa - easily traceable\",\n    \"Transaction occurred in Goa (Mapusa), and accused lives in Goa - local police have clear jurisdiction\",\n    \"Clear case of cheating - took money with promise of investment returns but never delivered anything\",\n    \"Digital payment records are strong, admissible evidence in court\"\n  ],\n  \"what_weakens_your_case\": [\n    \"You need to establish that Sahil had cheating intention at the time he took money - not just failed to deliver returns\",\n    \"No written agreement or terms of investment reduces documentary strength\",\n    \"If the incident was more than 2 years ago, you're approaching the 3-year limitation period under Section 468 CrPC\",\n    \"Cheating cases require proving dishonest intention at the time of taking money - which can be disputed by accused\"\n  ],\n  \"critical_missing_evidence\": [\n    \"Exact date of GPay transaction - critical for limitation period calculation\",\n    \"Any WhatsApp messages, texts, or calls where Sahil promised returns or investment terms\",\n    \"Any follow-up communication showing you asked for money back and he refused/delayed\",\n    \"
+
+... (truncated)
+
+
+assistant: Now I have all the information needed. Let me provide you with complete guidance:
+
+Code:
+py
+final_answer("COMPLETE GUIDANCE FOR YOUR INVESTMENT FRAUD CASE\n\n---\n\n## WHAT YOU NEED TO KNOW\n\n**Your Case Strength: MODERATE (7/10)**\n- Your GPay transaction proof is solid evidence - it provides clear digital trail with date, amount, and recipient\n- The accused (Sahil) is traceable - lives in Verna, Goa\n- The case is clear cheating - took money with promise of investment but never delivered\n\n**Key Issues:**\n- Must prove Sahil had dishonest intention at the time he took money (not just that investment failed)\n- No written agreement reduces documentary strength\n- **URGENT: You may be near the 3-year limitation period** - file immediately!\n\n---\n\n## WHERE TO FILE COMPLAINT\n\n**Option 1: Mapusa Police Station (RECOMMENDED)**\n- Address: Mapusa, North Goa District, Goa - 403507\n- Phone: 100 (emergency)\n- For crimes occurring in Mapusa\n\n**Option 2: Cyber Crime Cell, Panaji**\n- Address: Anti-Cyber Crime Cell, Goa Police Headquarters, Near Azad Maidan, Panaji\n- Phone: +91-832-2420810\n- Helpline: 1930 (call immediately for financial fraud)\n- Since payment was via GPay, this is also relevant\n\n---\n\n## DOCUMENTS TO CARRY\n\n1. **GPay Transaction Screenshot** - showing transfer of Rs. 50,000 to Sahil (MOST IMPORTANT)\n2. **Bank Statement** - from relevant period showing Rs. 50,000 debit\n3. **Any Messages** - WhatsApp/SMS where Sahil promised returns\n4. **Your ID Proof** - Aadhaar Card/Voter ID/Passport\n5. **Passport Photos** - 2 passport size photos\n\n---\n\n## STEP-BY-STEP PROCESS\n\n1. **Get your GPay transaction details** - Open GPay > Transaction History > Find the transfer > Screenshot all details including Transaction ID, date, amount, recipient\n2. **Get bank statement** - From your bank showing the debit\n3. **Gather any messages** with Sahil about the investment\n4. **Visit Mapusa Police Station** - Go to the police station, ask for the FIR form or write a complaint on plain paper\n5. **File FIR** - They are legally required to register if there's evidence of crime\n6. **Get FIR copy** - Always ask for a stamped copy with FIR number\n7. **IfRefuse** - Ask for written refusal, then approach Chief Judicial Magistrate under Section 156(3) CrPC\n\n---\n\n## ALTERNATIVELY, YOU CAN:\n\n**File online at:** https://cybercrime.gov.in\n- This creates documentation even if offline filing has issues\n\n**Call 1930** (National Cyber Crime Helpline) - Within 24 hours for best results\n\n---\n\n## WHAT TO SAY AT POLICE STATION\n\n\"I want to file an FIR against Sahil (name) who cheated me of Rs. 50,000. He took money in name of investment via GPay last year but never gave returns or refunded. Here is my GPay transaction proof.\"\n\n---\n\n## YOUR FIR DRAFT IS READY\n\nI've generated a complete FIR draft for you (Draft ID: bddb193d7fe8). You can export it using the document_exporter tool when ready.\n\n---\n\n## NEXT STEPS\n\n1. Provide your **full name** (needed for FIR)\n2. Try to find the **exact date** of transaction\n3. Gather GPay screenshot and bank statement\n4. Visit Mapusa Police Station and file FIR\n5. Also file online at cybercrime.gov.in as backup\n\n**Time is critical** - If the incident was around 3 years ago, file immediately!")
+<end_code></code>
+
+assistant: *Tool:* python_interpreter
+*Args:* final_answer("COMPLETE GUIDANCE FOR YOUR INVESTMENT FRAUD CASE\n\n---\n\n## WHAT YOU NEED TO KNOW\n\n*Your Case Strength: MODERATE (7/10)*\n- Your GPay transaction proof is solid evidence - it provides clear digital trail with date, amount, and recipient\n- The accused (Sahil) is traceable - lives
+
+assistant: 
+Execution logs:
+Last output from code snippet:
+COMPLETE GUIDANCE FOR YOUR INVESTMENT FRAUD CASE
+
+---
+
+## WHAT YOU NEED TO KNOW
+
+**Your Case Strength: MODERATE (7/10)**
+- Your GPay transaction proof is solid evidence - it provides clear digital trail with date, amount, and recipient
+- The accused (Sahil) is traceable - lives in Verna, Goa
+- The case is clear cheating - took money with promise of investment but never delivered
+
+**Key Issues:**
+- Must prove Sahil had dishonest intention at the time he took money (not just that investment failed)
+- No written agreement reduces documentary strength
+- **URGENT: You may be near the 3-year limitation period** - file immediately!
+
+---
+
+## WHERE TO FILE COMPLAINT
+
+**Option 1: Mapusa Police Station (RECOMMENDED)**
+- Address: Mapusa, North Goa District, Goa - 403507
+- Phone: 100 (emergency)
+- For crimes occurring in Mapusa
+
+**Option 2: Cyber Crime Cell, Panaji**
+- Address: Anti-Cyber Crime Cell, Goa Police Headquarters, Near Azad Maidan, Panaji
+- Phone: +91-832-2420810
+- Helpline: 1930 (call immediately for financial fraud)
+- Since payment was via GPay, this is also relevant
+
+---
+
+## DOCUMENTS TO CARRY
+
+1. **GPay Transaction Screenshot** - showing transfer of Rs. 50,000 to Sahil (MOST IMPORTANT)
+2. **Bank Statement** - from relevant period showing Rs. 50,000 debit
+3. **Any Messages** - WhatsApp/SMS where Sahil promised returns
+4. **Your ID Proof** - Aadhaar Card/Voter ID/Passport
+5. **Passport Photos** - 2 passport size photos
+
+---
+
+## S
+
+... (truncated)
+
+
+assistant: COMPLETE GUIDANCE FOR YOUR INVESTMENT FRAUD CASE
+
+---
+
+## WHAT YOU NEED TO KNOW
+
+*Your Case Strength: MODERATE (7/10)*
+- Your GPay transaction proof is solid evidence - it provides clear digital trail with date, amount, and recipient
+- The accused (Sahil) is traceable - lives in Verna, Goa
+- The case is clear cheating - took money with promise of investment but never delivered
+
+*Key Issues:*
+- Must prove Sahil had dishonest intention at the time he took money (not just that investment failed)
+- No written agreement reduces documentary strength
+- *URGENT: You may be near the 3-year limitation period* - file immediately!
+
+---
+
+## WHERE TO FILE COMPLAINT
+
+*Option 1: Mapusa Police Station (RECOMMENDED)*
+- Address: Mapusa, North Goa District, Goa - 403507
+- Phone: 100 (emergency)
+- For crimes occurring in Mapusa
+
+*Option 2: Cyber Crime Cell, Panaji*
+- Address: Anti-Cyber Crime Cell, Goa Police Headquarters, Near Azad Maidan, Panaji
+- Phone: +91-832-2420810
+- Helpline: 1930 (call immediately for financial fraud)
+- Since payment was via GPay, this is also relevant
+
+---
+
+## DOCUMENTS TO CARRY
+
+1. *GPay Transaction Screenshot* - showing transfer of Rs. 50,000 to Sahil (MOST IMPORTANT)
+2. *Bank Statement* - from relevant period showing Rs. 50,000 debit
+3. *Any Messages* - WhatsApp/SMS where Sahil promised returns
+4. *Your ID Proof* - Aadhaar Card/Voter ID/Passport
+5. *Passport Photos* - 2 passport size photos
+
+---
+
+## STEP-BY-STEP PROCESS
+
+1. *Get your GPay transaction details* - Open GPay > Transaction History > Find the transfer > Screenshot all details including Transaction ID, date, amount, recipient
+2. *Get bank statement* - From your bank showing the debit
+3. *Gather any messages* with Sahil about the investment
+4. *Visit Mapusa Police Station* - Go to the police station, ask for the FIR form or write a complaint on plain paper
+5. *File FIR* - They are legally required to register if there's evidence of crime
+6. *Get FIR copy* - Always ask for a stamped copy with FIR number
+7. *IfRefuse* - Ask for written refusal, then approach Chief Judicial Magistrate under Section 156(3) CrPC
+
+---
+
+## ALTERNATIVELY, YOU CAN:
+
+*File online at:* https://cybercrime.gov.in
+- This creates documentation even if offline filing has issues
+
+*Call 1930* (National Cyber Crime Helpline) - Within 24 hours for best results
+
+---
+
+## WHAT TO SAY AT POLICE STATION
+
+"I want to file an FIR against Sahil (name) who cheated me of Rs. 50,000. He took money in name of investment via GPay last year but never gave returns or refunded. Here is my GPay transaction proof."
+
+---
+
+## YOUR FIR DRAFT IS READY
+
+I've generated a complete FIR draft for you (Draft ID: bddb193d7fe8). You can export it using the document_exporter tool when ready.
+
+---
+
+## NEXT STEPS
+
+1. Provide your *full name* (needed for FIR)
+2. Try to find the *exact date* of transaction
+3. Gather GPay screenshot and bank statement
+4. Visit Mapusa Police Station and file FIR
+5. Also file online at cybercrime.gov.in as backup
+
+*Time is critical* - If the incident was around 3 years ago, file immediately

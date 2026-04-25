@@ -36,7 +36,7 @@ def generate(prompt: str, system_prompt: str = None) -> str:
                 "temperature": 0.3,
                 "max_tokens": 2048,
             },
-            timeout=60,
+            timeout=90,  # increased from 60 — checklist/complex tools need more time
         )
         
         if resp.status_code != 200:
