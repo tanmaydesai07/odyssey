@@ -38,3 +38,6 @@ pydantic
 python-dateutil
 fastapi
 uvicorn
+
+# ── Cloud storage ─────────────────────────────────────────────────────────
+cloudinary>=1.36.0

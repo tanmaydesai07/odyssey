@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 FastAPI server for the Legal AI Agent.
 
@@ -24,11 +25,138 @@ All documents are stored in agent/exports/{session_id}/
 import os
 import sys
 import json
+import re
 import asyncio
 import shutil
+import threading
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
+
+
+def _looks_like_raw_code(text: str) -> bool:
+    """Returns True if text looks like raw Python code or XML tool calls, not a human answer."""
+    if not text:
+        return False
+    # Detect XML-style tool call blocks (MiniMax model format)
+    if re.search(r'<(?:minimax:)?tool_call>|<invoke\s+name=', text):
+        return True
+    lines = [l.strip() for l in text.strip().splitlines() if l.strip()]
+    if not lines:
+        return False
+    code_line_count = 0
+    for line in lines[:15]:
+        if re.match(r'^[\w_]+ ?= ?[\w_]+\(', line):  # var = tool(
+            code_line_count += 1
+        elif re.match(r'^print\(', line):
+            code_line_count += 1
+        elif line.lower() in ('code', 'code:'):
+            code_line_count += 1
+        elif re.match(r'^[\w_]+\(.*\)$', line) and '=' not in line:
+            code_line_count += 1
+    return code_line_count >= max(1, len(lines[:15]) * 0.3)
+
+
+def _looks_like_raw_json(text: str) -> bool:
+    """Check if text is raw JSON output from a tool (not human-readable)."""
+    stripped = text.strip()
+    if not stripped:
+        return False
+    # Detect JSON objects or arrays
+    if (stripped.startswith('{') and stripped.endswith('}')) or \
+       (stripped.startswith('[') and stripped.endswith(']')):
+        try:
+            parsed = json.loads(stripped)
+            # JSON with keys like query, results, case_type, chunk_id = raw tool output
+            if isinstance(parsed, dict):
+                tool_keys = {'query', 'results', 'case_type', 'chunk_id', 'confidence',
+                             'reasoning', 'total_found', 'error', 'source_path',
+                             'score', 'category', 'text'}
+                if tool_keys & set(parsed.keys()):
+                    return True
+                # Any JSON with mostly snake_case keys is likely raw tool output
+                snake_keys = sum(1 for k in parsed.keys() if '_' in k or k.islower())
+                if snake_keys >= len(parsed.keys()) * 0.6 and len(parsed.keys()) >= 2:
+                    return True
+            elif isinstance(parsed, list):
+                return True
+            return True  # any parseable JSON in a final answer is suspicious
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return False
+
+
+def _clean_final_answer(text: str) -> str:
+    """
+    Strip raw Python code, code fences, tool call lines, and smolagents
+    internal markers from the final answer so only human-readable text
+    reaches the frontend chat bubble.
+    """
+    if not text:
+        return text
+
+    # If the entire answer is raw JSON from a tool, return empty to trigger synthesis
+    if _looks_like_raw_json(text):
+        print(f"[Server] Detected raw JSON in final answer, will synthesize instead")
+        return ''
+
+    was_all_code = _looks_like_raw_code(text)
+
+    # Remove XML-style tool call blocks (MiniMax/big-pickle model format)
+    text = re.sub(r'<(?:minimax:)?tool_call>[\s\S]*?</(?:minimax:)?tool_call>', '', text)
+    text = re.sub(r'<invoke\s+name=["\'][^\'"]+["\']>[\s\S]*?</invoke>', '', text)
+    text = re.sub(r'<parameter\s+name=["\'][^\'"]+["\']>[\s\S]*?</parameter>', '', text)
+    # Remove fenced code blocks (```py ... ``` or ```python ... ```)
+    text = re.sub(r'```(?:py|python)?[\s\S]*?```', '', text)
+    # Remove <end_code> markers
+    text = re.sub(r'<end_code>', '', text)
+    # Remove lines that look like Python tool calls: identifier(... or variable = tool(...
+    text = re.sub(r'^[\w_]+ ?= ?[\w_]+\(.*\)\s*$', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^print\(.*\)\s*$', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^[\w_]+\(.*\)\s*$', '', text, flags=re.MULTILINE)
+    # Remove lone "code" header (model sometimes emits just the word "code" on a line)
+    text = re.sub(r'^code\s*$', '', text, flags=re.MULTILINE | re.IGNORECASE)
+    # Remove "Thought:" prefix lines
+    text = re.sub(r'^Thought\s*:.*$', '', text, flags=re.MULTILINE | re.IGNORECASE)
+    # Remove "Code:" header lines
+    text = re.sub(r'^Code\s*:\s*$', '', text, flags=re.MULTILINE | re.IGNORECASE)
+    # Collapse multiple blank lines
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    cleaned = text.strip()
+    # If the original was raw code and nothing meaningful remains, return empty
+    # so caller can substitute a proper fallback
+    if was_all_code and len(cleaned) < 60:
+        return ''
+    return cleaned
+
+
+def _extract_thought_only(model_output: str) -> str:
+    """
+    From a full model output (Thought: ... \n\nCode:\n```py\n...```),
+    extract only the Thought portion for display in the thinking panel.
+    """
+    if not model_output:
+        return ''
+    # Extract text before "Code:" section
+    code_section = re.search(r'\n\nCode\s*:', model_output, re.IGNORECASE)
+    if code_section:
+        thought = model_output[:code_section.start()].strip()
+    else:
+        thought = model_output.strip()
+    # Strip leading "Thought:" label
+    thought = re.sub(r'^Thought\s*:\s*', '', thought, flags=re.IGNORECASE).strip()
+    return thought[:300]
+
+# Thread-local storage for session_id
+_thread_local = threading.local()
+
+def set_current_session_id(session_id: str):
+    """Store session_id in thread-local storage for tools to access."""
+    _thread_local.session_id = session_id
+
+def get_current_session_id() -> Optional[str]:
+    """Get session_id from thread-local storage."""
+    return getattr(_thread_local, 'session_id', None)
 
 # Fix Windows encoding
 if sys.platform == "win32":
@@ -52,14 +180,15 @@ from pydantic import BaseModel
 import session_store as ss
 
 # ── Lazy-load the agent (heavy — only once) ───────────────────────────────
-_agent = None
+_shared_model = None
+_shared_tools = None
 
-def get_agent():
-    global _agent
-    if _agent is not None:
-        return _agent
+def get_shared_resources():
+    global _shared_model, _shared_tools
+    if _shared_model is not None and _shared_tools is not None:
+        return _shared_model, _shared_tools
 
-    print("[Server] Loading agent...")
+    print("[Server] Initializing shared model and tools...")
     from smolagents import CodeAgent, tool
     from tools.final_answer import FinalAnswerTool
     from tools.case_classifier import CaseClassifierTool
@@ -79,20 +208,42 @@ def get_agent():
                                        EscalationRecommenderTool, PIIScrubbingTool)
     from zen_model import ZenModel
 
-    model = ZenModel(model_id="big-pickle", max_tokens=8192, temperature=0.3)
+    _shared_model = ZenModel(model_id="big-pickle", max_tokens=8192, temperature=0.3)
+    _shared_tools = [
+        FinalAnswerTool(), WebSearchTool(), VisitWebpageTool(),
+        CaseClassifierTool(), JurisdictionResolverTool(),
+        IntakeAnalyzerTool(), WorkflowPlannerTool(),
+        LegalRetrieverTool(), SourceCitationTool(),
+        DraftGeneratorTool(), DraftEditorTool(), DocumentExporterTool(),
+        AuthorityFinderTool(), ChecklistGeneratorTool(),
+        SafetyGuardTool(), CrisisEscalatorTool(), DisclaimerEnforcerTool(),
+        TranslatorTool(), LegalTermGlossaryTool(), LanguageDetectorTool(),
+        AuditLoggerTool(), SessionManagerTool(), CaseDashboardTool(),
+        WorkflowProgressTool(), AnalyticsReporterTool(),
+        ComplaintStrengthAnalyserTool(), EvidenceOrganiserTool(),
+        HearingPreparationTool(), MultiDocumentSummariserTool(),
+        EscalationRecommenderTool(), PIIScrubbingTool(),
+    ]
+    return _shared_model, _shared_tools
 
-    SYSTEM_PROMPT = """You are a Legal Assistance Agent for Indian citizens. Help users with FIRs, consumer complaints, RTI applications, and legal processes.
+def get_agent():
+    # Deprecated for per-session use, but used for preloading at startup
+    get_shared_resources()
+    return None
 
-WORKFLOW — follow this order every time:
-1. DETECT LANGUAGE using language_detector — respond in the user's language throughout
-2. INTAKE using intake_analyzer — extract facts, identify missing info (especially city/state)
-3. If intake says ready_to_proceed=false — ask the user the follow_up_questions, wait for answers
+SYSTEM_PROMPT = """You are NyayaMitr, an AI Legal Assistance Agent for Indian citizens.
+Help users navigate FIRs, consumer complaints, RTI applications, landlord disputes, wage issues, and legal processes.
+
+WORKFLOW - follow this order every time:
+1. DETECT LANGUAGE using language_detector - respond in the user's language throughout
+2. INTAKE using intake_analyzer - extract facts, identify missing info (especially city/state)
+3. If intake says ready_to_proceed=false - ask the user the follow_up_questions only, wait for answers
 4. CLASSIFY using case_classifier
-5. RETRIEVE using legal_retriever
-6. PLAN using workflow_planner (includes escalation paths)
-7. Give final_answer with complete guidance
+5. RETRIEVE relevant laws using legal_retriever
+6. PLAN steps using workflow_planner
+7. Call final_answer() with a complete, formatted human-readable response
 
-CRITICAL CODE FORMAT — follow this EXACTLY every single time:
+CRITICAL CODE FORMAT - follow this EXACTLY every single time:
 
 Thought: <your reasoning here>
 
@@ -102,40 +253,43 @@ result = some_tool(arg="value")
 print(result)
 ```<end_code>
 
+FINAL ANSWER FORMAT - EXTREMELY IMPORTANT:
+- The final_answer() call MUST contain ONLY human-readable text, NEVER code or variable names
+- CORRECT:  final_answer("Here are your legal options:\n1. File a complaint...")
+- WRONG:    final_answer(case_result)   <- never pass a variable
+- WRONG:    final_answer("result = case_classifier(...)...")  <- never pass code
+- Build your answer as a string variable, then call final_answer(answer_text)
+
+EXAMPLE of correct final step:
+Thought: I have all the info. Now I will give the final answer.
+
+Code:
+```py
+answer = "Based on your situation in Mumbai:\n\n"
+answer += "## Your Legal Options\n"
+answer += "1. File a consumer complaint at the Consumer Forum\n"
+answer += "2. Send a legal notice to the seller\n\n"
+answer += "**Disclaimer**: This is informational guidance only, not legal advice."
+final_answer(answer)
+```<end_code>
+
 RULES:
 - ALWAYS wrap code in ```py ... ``` fences. NEVER write bare code after "Code:".
-- NEVER assume the user's location — always ask if city/state is missing.
+- NEVER assume the user's location - always ask if city/state is missing.
 - Keep tool calls to max 4-5, then give the final answer.
-- When calling final_answer(), use a SINGLE string with \\n for newlines.
-- Do NOT use triple-quoted strings inside final_answer().
+- When calling final_answer(), build the answer as a string with + concatenation, NOT triple quotes.
 - ALWAYS end your code block with the closing ``` then <end_code> on the same line.
-- Always include a disclaimer that this is informational guidance, not legal advice."""
+- Always include a disclaimer that this is informational guidance, not legal advice.
+- Format your final answer with ## headings, bullet points, and numbered steps.
 
-    _agent = CodeAgent(
-        model=model,
-        tools=[
-            FinalAnswerTool(), WebSearchTool(), VisitWebpageTool(),
-            CaseClassifierTool(), JurisdictionResolverTool(),
-            IntakeAnalyzerTool(), WorkflowPlannerTool(),
-            LegalRetrieverTool(), SourceCitationTool(),
-            DraftGeneratorTool(), DraftEditorTool(), DocumentExporterTool(),
-            AuthorityFinderTool(), ChecklistGeneratorTool(),
-            SafetyGuardTool(), CrisisEscalatorTool(), DisclaimerEnforcerTool(),
-            TranslatorTool(), LegalTermGlossaryTool(), LanguageDetectorTool(),
-            AuditLoggerTool(), SessionManagerTool(), CaseDashboardTool(),
-            WorkflowProgressTool(), AnalyticsReporterTool(),
-            ComplaintStrengthAnalyserTool(), EvidenceOrganiserTool(),
-            HearingPreparationTool(), MultiDocumentSummariserTool(),
-            EscalationRecommenderTool(), PIIScrubbingTool(),
-        ],
-        max_steps=12,
-        verbosity_level=1,
-        planning_interval=4,
-        name="legal_assistant",
-        description=SYSTEM_PROMPT,
-    )
-    print("[Server] Agent loaded.")
-    return _agent
+DOCUMENT GENERATION - when user asks for a draft, complaint, FIR, RTI, notice, PDF, or DOCX:
+1. First call draft_generator(template_type=..., extracted_facts=...) to create the draft
+2. Parse the draft_id from the JSON result
+3. Then ALWAYS call document_exporter(draft_id=draft_id, format="pdf") to export the file
+4. Include the download_url or file_path in your final_answer so the user can access it
+- NEVER skip the document_exporter step. The user expects a downloadable file, not just text."""
+
+
 
 
 # ── Per-session agent memory store ───────────────────────────────────────────
@@ -145,24 +299,27 @@ _session_agents: dict = {}
 def get_session_agent(session_id: str):
     """Get or create an agent instance for a specific session."""
     if session_id not in _session_agents:
-        # Clone the base agent's config for this session
-        base = get_agent()
         from smolagents import CodeAgent
-        from zen_model import ZenModel
-        model = ZenModel(model_id="big-pickle", max_tokens=8192, temperature=0.3)
-        session_agent = CodeAgent(
+        model, tools = get_shared_resources()
+        
+        base = CodeAgent(
             model=model,
-            tools=base.tools,
+            tools=tools,
             max_steps=12,
             verbosity_level=1,
             planning_interval=4,
             name="legal_assistant",
-            description=base.description,
+            description="NyayaMitr legal assistant",
         )
+        base.prompt_templates["system_prompt"] += "\n\n" + SYSTEM_PROMPT
+        base.initialize_system_prompt()
+        
         # Restore memory from disk if session exists
-        ss.restore_agent_memory(session_id, session_agent)
-        _session_agents[session_id] = session_agent
-        print(f"[Server] Created agent for session {session_id}")
+        ss.restore_agent_memory(session_id, base)
+        # Store session_id in agent's memory for tools to access
+        base.session_id = session_id
+        _session_agents[session_id] = base
+        print(f"[Server] Created fresh agent for session {session_id}")
     return _session_agents[session_id]
 
 
@@ -223,7 +380,12 @@ class ExportRequest(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+    from cloud_storage import is_cloudinary_enabled
+    return {
+        "status": "ok",
+        "timestamp": datetime.utcnow().isoformat(),
+        "storage": "cloudinary" if is_cloudinary_enabled() else "local",
+    }
 
 
 # ── Session endpoints ─────────────────────────────────────────────────────────
@@ -340,27 +502,25 @@ async def chat(req: ChatRequest):
     agent = get_session_agent(session_id)
 
     async def event_stream():
-        collected_steps = []
         final_answer_text = ""
+        step_count = 0
+        max_retries = 2
+        retry_count = 0
 
         try:
             # Run agent in a thread (it's synchronous) and yield steps
             loop = asyncio.get_event_loop()
 
-            def run_agent():
-                steps = []
-                for step_log in agent.run(task=message, stream=True, reset=False):
-                    steps.append(step_log)
-                return steps
-
-            # Stream steps as they come using run_in_executor
             from smolagents.agents import ActionStep, PlanningStep, FinalAnswerStep
             import concurrent.futures
 
             step_queue = asyncio.Queue()
+            collected_observations = []  # accumulate tool results for fallback synthesis
 
             def _run():
                 try:
+                    # Set session_id in thread-local storage for tools to access
+                    set_current_session_id(session_id)
                     for step_log in agent.run(task=message, stream=True, reset=False):
                         asyncio.run_coroutine_threadsafe(
                             step_queue.put(step_log), loop
@@ -385,8 +545,16 @@ async def chat(req: ChatRequest):
                     break  # done
 
                 if isinstance(step_log, Exception):
-                    yield f"data: {json.dumps({'type': 'error', 'content': str(step_log)})}\n\n"
+                    error_msg = str(step_log)
+                    yield f"data: {json.dumps({'type': 'error', 'content': error_msg})}\n\n"
+                    
+                    # If no answer was generated, provide a fallback
+                    if not final_answer_text:
+                        final_answer_text = "I apologize, but I encountered an error processing your request. Please try rephrasing your question or contact support for assistance."
+                        yield f"data: {json.dumps({'type': 'answer', 'content': final_answer_text})}\n\n"
                     break
+
+                step_count += 1
 
                 if isinstance(step_log, PlanningStep):
                     plan = str(step_log.plan or "")[:500]
@@ -395,8 +563,9 @@ async def chat(req: ChatRequest):
                 elif isinstance(step_log, ActionStep):
                     # Thinking
                     if step_log.model_output:
-                        thought = str(step_log.model_output)[:300]
-                        yield f"data: {json.dumps({'type': 'step', 'step': step_log.step_number, 'content': thought})}\n\n"
+                        thought = _extract_thought_only(str(step_log.model_output))
+                        if thought:  # only stream if there's actual thought content
+                            yield f"data: {json.dumps({'type': 'step', 'step': step_log.step_number, 'content': thought})}\n\n"
 
                     # Tool calls
                     if step_log.tool_calls:
@@ -407,11 +576,77 @@ async def chat(req: ChatRequest):
                     # Observations
                     if step_log.observations:
                         obs = str(step_log.observations)[:400]
+                        collected_observations.append(obs)  # save for fallback
                         yield f"data: {json.dumps({'type': 'observation', 'content': obs})}\n\n"
 
                 elif isinstance(step_log, FinalAnswerStep):
-                    final_answer_text = str(step_log.final_answer or "")
+                    # FinalAnswerStep is a dataclass with a single `output` field
+                    raw = step_log.output
+
+                    if isinstance(raw, str):
+                        final_answer_text = _clean_final_answer(raw)
+                    elif isinstance(raw, dict):
+                        # If it has tool-output keys, it's raw tool output — don't format, synthesize
+                        tool_keys = {'query', 'results', 'case_type', 'chunk_id', 'confidence',
+                                     'reasoning', 'total_found', 'error'}
+                        if tool_keys & set(raw.keys()):
+                            print(f"[Server] Raw dict with tool keys detected in final answer, will synthesize")
+                            final_answer_text = ''  # trigger synthesis below
+                            collected_observations.append(json.dumps(raw, indent=2, ensure_ascii=False)[:600])
+                        else:
+                            # Format dict output nicely
+                            parts = []
+                            for k, v in raw.items():
+                                key = k.replace('_', ' ').title()
+                                if isinstance(v, list):
+                                    parts.append(f"**{key}:**\n" + '\n'.join(f"- {item}" for item in v))
+                                else:
+                                    parts.append(f"**{key}:** {v}")
+                            final_answer_text = _clean_final_answer('\n\n'.join(parts))
+                    else:
+                        final_answer_text = _clean_final_answer(str(raw)) if raw is not None else ""
+
+                    # If cleaning removed everything meaningful, build from observations or use fallback
+                    if not final_answer_text or len(final_answer_text) < 10:
+                        if collected_observations:
+                            # Use the LLM to synthesize a proper answer from what tools returned
+                            obs_text = '\n---\n'.join(collected_observations[:5])
+                            try:
+                                from tools.llm_utils import generate
+                                synthesis_prompt = (
+                                    f"User asked: {message}\n\n"
+                                    f"Tool results collected:\n{obs_text}\n\n"
+                                    f"Write a clear, helpful legal guidance response in markdown format "
+                                    f"with ## headings and bullet points. Include specific next steps. "
+                                    f"End with a disclaimer about informational guidance only."
+                                )
+                                final_answer_text = generate(synthesis_prompt, "You are NyayaMitr, an Indian legal assistance AI. Give clear, practical legal guidance.")
+                            except Exception:
+                                final_answer_text = "I have analyzed your situation. Please ask me specific questions about your legal options, such as how to file a complaint or what documents you need.\n\n**Disclaimer**: This is informational guidance only, not legal advice."
+                        else:
+                            final_answer_text = "I have analyzed your situation. Please ask me specific questions about your legal options, such as how to file a complaint or what documents you need.\n\n**Disclaimer**: This is informational guidance only, not legal advice."
+
                     yield f"data: {json.dumps({'type': 'answer', 'content': final_answer_text})}\n\n"
+
+            # If agent ran but produced no final answer, synthesize from observations
+            if step_count > 0 and not final_answer_text:
+                if collected_observations:
+                    obs_text = '\n---\n'.join(collected_observations[:5])
+                    try:
+                        from tools.llm_utils import generate
+                        synthesis_prompt = (
+                            f"User asked: {message}\n\n"
+                            f"Tool results collected:\n{obs_text}\n\n"
+                            f"Write a clear, helpful legal guidance response in markdown format "
+                            f"with ## headings and bullet points. Include specific next steps. "
+                            f"End with a disclaimer about informational guidance only."
+                        )
+                        final_answer_text = generate(synthesis_prompt, "You are NyayaMitr, an Indian legal assistance AI. Give clear, practical legal guidance.")
+                    except Exception:
+                        final_answer_text = "I have analyzed your situation. Please ask me a specific question like 'What steps should I take?' or 'What documents do I need?'\n\n**Disclaimer**: This is informational guidance only, not legal advice."
+                else:
+                    final_answer_text = """I understand you need legal assistance. Let me help you properly.\n\nCould you please provide more details about your situation? Specifically:\n1. What happened?\n2. Where did it happen? (City and State)\n3. When did it happen?\n4. What outcome are you seeking?\n\n**Disclaimer**: This is informational guidance only, not legal advice."""
+                yield f"data: {json.dumps({'type': 'answer', 'content': final_answer_text})}\n\n"
 
             # Persist session after agent finishes
             _persist_session(session_id, agent, message, final_answer_text)
@@ -419,7 +654,14 @@ async def chat(req: ChatRequest):
             yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
 
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+            error_msg = f"Server error: {str(e)}"
+            yield f"data: {json.dumps({'type': 'error', 'content': error_msg})}\n\n"
+            
+            # Provide fallback answer
+            if not final_answer_text:
+                final_answer_text = "I apologize, but I'm having trouble processing your request right now. Please try again or contact support."
+                yield f"data: {json.dumps({'type': 'answer', 'content': final_answer_text})}\n\n"
+                _persist_session(session_id, agent, message, final_answer_text)
 
     return StreamingResponse(
         event_stream(),
@@ -455,47 +697,45 @@ def _persist_session(session_id: str, agent, user_message: str, agent_answer: st
 @app.post("/export")
 def export_document(req: ExportRequest):
     """
-    Generate a DOCX/PDF from a draft and bind it to the session.
-    Node.js calls this, then serves the file to React for download.
+    Generate a DOCX/PDF from a draft and upload to Cloudinary (or local fallback).
+    Returns a public download_url.
     """
-    from tools.document_tools import DocumentExporterTool, DRAFTS_DIR, _load_draft, _save_draft
+    from tools.document_tools import DocumentExporterTool, _load_draft
+    from cloud_storage import upload_document
 
     draft = _load_draft(req.draft_id)
     if draft is None:
         raise HTTPException(status_code=404, detail=f"Draft {req.draft_id} not found")
 
-    # Export to session-specific directory
-    exports_dir = session_exports_dir(req.session_id)
     ttype = draft.get("template_type", "document")
-    filename_base = f"{ttype}_{req.draft_id}"
 
-    # Temporarily override DRAFTS_DIR parent to session exports dir
-    # by saving a copy of the draft and exporting from there
+    # Generate the file locally first
     exp = DocumentExporterTool()
-    result = json.loads(exp.forward(draft_id=req.draft_id, format=req.format))
+    result = json.loads(exp.forward(draft_id=req.draft_id, format=req.format, session_id=req.session_id))
 
     if "error" in result:
         raise HTTPException(status_code=500, detail=result["error"])
 
-    # Move the file into the session's exports folder
     src = Path(result["file_path"])
-    dst = exports_dir / src.name
-    if src != dst:
-        shutil.copy2(src, dst)
+    filename = src.name
+
+    # Upload to Cloudinary (or keep local)
+    cloud = upload_document(src, req.session_id, filename)
 
     # Record document in session
     data = ss.load_session(req.session_id)
     if data:
         docs = data.get("documents", [])
         doc_entry = {
-            "draft_id":   req.draft_id,
-            "filename":   dst.name,
-            "format":     req.format,
-            "template":   ttype,
-            "created_at": datetime.utcnow().isoformat(),
-            "path":       str(dst),
+            "draft_id":    req.draft_id,
+            "filename":    filename,
+            "format":      req.format,
+            "template":    ttype,
+            "created_at":  datetime.utcnow().isoformat(),
+            "download_url": cloud["url"],
+            "storage":     cloud["storage"],
+            "public_id":   cloud["public_id"],
         }
-        # Replace if same draft_id + format already exists
         docs = [d for d in docs if not (d["draft_id"] == req.draft_id and d["format"] == req.format)]
         docs.append(doc_entry)
         data["documents"] = docs
@@ -503,23 +743,24 @@ def export_document(req: ExportRequest):
         ss._save_raw(req.session_id, data)
 
     return {
-        "session_id": req.session_id,
-        "draft_id":   req.draft_id,
-        "filename":   dst.name,
-        "format":     req.format,
-        "download_url": f"/document/{req.session_id}/{dst.name}",
+        "session_id":   req.session_id,
+        "draft_id":     req.draft_id,
+        "filename":     filename,
+        "format":       req.format,
+        "download_url": cloud["url"],
+        "storage":      cloud["storage"],
     }
 
 
 @app.get("/document/{session_id}/{filename}")
 def download_document(session_id: str, filename: str):
-    """
-    Serve a generated document file.
-    Node.js proxies this to React as a file download.
-    """
-    file_path = session_exports_dir(session_id) / filename
+    """Serve a generated document file from session-grouped folder."""
+    from tools.document_exporter_new import get_session_exports_dir
+
+    # Check session folder first
+    file_path = get_session_exports_dir(session_id) / filename
     if not file_path.exists():
-        # Fallback: check global exports dir
+        # Fallback: global exports dir
         file_path = EXPORTS_BASE / filename
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Document not found")
@@ -590,6 +831,278 @@ def get_upload(session_id: str, filename: str):
         raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(path=str(file_path), filename=filename)
 
+
+# ── Voice message transcription ───────────────────────────────────────────────
+
+class TranscribeRequest(BaseModel):
+    audio_url: str
+    language: str = "en"
+    auth_user: Optional[str] = None  # Twilio account SID for auth
+    auth_pass: Optional[str] = None  # Twilio auth token for auth
+
+@app.post("/transcribe")
+async def transcribe_audio(req: TranscribeRequest):
+    """
+    Download an audio file (OGG from WhatsApp/Twilio) and transcribe it to text.
+    Uses Google Speech Recognition (free, no API key required).
+    """
+    import tempfile
+    import subprocess
+
+    audio_url = req.audio_url
+    print(f"[Transcribe] Downloading audio from: {audio_url[:80]}...")
+
+    try:
+        # Download the audio file (Twilio URLs require basic auth)
+        headers = {}
+        auth = None
+        if req.auth_user and req.auth_pass:
+            auth = (req.auth_user, req.auth_pass)
+
+        import requests as req_lib
+        resp = req_lib.get(audio_url, auth=auth, timeout=30)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=400, detail=f"Failed to download audio: HTTP {resp.status_code}")
+
+        # Save to temp file
+        suffix = ".ogg"
+        content_type = resp.headers.get("content-type", "")
+        if "mp4" in content_type or "m4a" in content_type:
+            suffix = ".mp4"
+        elif "wav" in content_type:
+            suffix = ".wav"
+        elif "mpeg" in content_type or "mp3" in content_type:
+            suffix = ".mp3"
+
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp.write(resp.content)
+            tmp_path = tmp.name
+
+        print(f"[Transcribe] Audio saved ({len(resp.content)} bytes, type={content_type})")
+
+        # Convert to WAV using ffmpeg (required for speech_recognition)
+        wav_path = tmp_path.rsplit(".", 1)[0] + ".wav"
+
+        # Find ffmpeg — use imageio-ffmpeg (bundled binary, always works)
+        ffmpeg_bin = None
+        try:
+            import imageio_ffmpeg
+            ffmpeg_bin = imageio_ffmpeg.get_ffmpeg_exe()
+        except ImportError:
+            pass
+
+        if not ffmpeg_bin:
+            # Fallback to system/conda ffmpeg
+            for p in [
+                os.path.join(sys.prefix, "Library", "bin", "ffmpeg.exe"),
+                "ffmpeg",
+            ]:
+                if p == "ffmpeg" or os.path.exists(p):
+                    ffmpeg_bin = p
+                    break
+
+        print(f"[Transcribe] ffmpeg binary: {ffmpeg_bin}")
+
+        conversion_ok = False
+
+        # Try ffmpeg first
+        if ffmpeg_bin:
+            try:
+                result = subprocess.run(
+                    [ffmpeg_bin, "-y", "-i", tmp_path, "-ar", "16000", "-ac", "1", "-f", "wav", wav_path],
+                    capture_output=True, timeout=30
+                )
+                if result.returncode == 0 and os.path.exists(wav_path):
+                    conversion_ok = True
+                    print(f"[Transcribe] ffmpeg conversion OK → {wav_path}")
+                else:
+                    stderr_msg = result.stderr.decode(errors='replace')[:300]
+                    print(f"[Transcribe] ffmpeg failed (rc={result.returncode}): {stderr_msg}")
+            except FileNotFoundError:
+                print("[Transcribe] ffmpeg binary not found at runtime")
+            except Exception as e:
+                print(f"[Transcribe] ffmpeg error: {e}")
+
+        # Fallback to pydub (also needs ffmpeg, but set its path explicitly)
+        if not conversion_ok:
+            try:
+                from pydub import AudioSegment
+                import pydub.utils
+                # Tell pydub where ffmpeg is
+                if ffmpeg_bin and ffmpeg_bin != "ffmpeg" and os.path.exists(ffmpeg_bin):
+                    AudioSegment.converter = ffmpeg_bin
+                    ffprobe = ffmpeg_bin.replace("ffmpeg", "ffprobe")
+                    if os.path.exists(ffprobe):
+                        AudioSegment.ffprobe = ffprobe
+                audio = AudioSegment.from_file(tmp_path)
+                audio = audio.set_frame_rate(16000).set_channels(1)
+                audio.export(wav_path, format="wav")
+                if os.path.exists(wav_path):
+                    conversion_ok = True
+                    print(f"[Transcribe] pydub conversion OK → {wav_path}")
+            except Exception as e:
+                print(f"[Transcribe] pydub also failed: {e}")
+
+        if not conversion_ok:
+            raise HTTPException(
+                status_code=500,
+                detail="Audio conversion failed. Install ffmpeg: conda install -c conda-forge ffmpeg"
+            )
+
+        # Transcribe using speech_recognition
+        import speech_recognition as sr
+        recognizer = sr.Recognizer()
+
+        with sr.AudioFile(wav_path) as source:
+            audio_data = recognizer.record(source)
+
+        # Map language codes to Google Speech Recognition language codes
+        lang_map = {
+            "en": "en-IN", "hi": "hi-IN", "mr": "mr-IN", "ta": "ta-IN",
+            "te": "te-IN", "bn": "bn-IN", "kn": "kn-IN", "ml": "ml-IN",
+            "gu": "gu-IN", "pa": "pa-IN",
+        }
+        lang_code = lang_map.get(req.language, "en-IN")
+
+        text = recognizer.recognize_google(audio_data, language=lang_code)
+        print(f"[Transcribe] Result ({lang_code}): {text[:100]}...")
+
+        # Cleanup temp files
+        try:
+            os.unlink(tmp_path)
+            os.unlink(wav_path)
+        except:
+            pass
+
+        return {"text": text, "language": req.language}
+
+    except HTTPException:
+        raise
+    except sr.UnknownValueError:
+        return {"text": "", "language": req.language, "error": "Could not understand audio"}
+    except sr.RequestError as e:
+        raise HTTPException(status_code=500, detail=f"Speech recognition service error: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {e}")
+
+
+
+# ── Text Extraction (OCR/PDF) ────────────────────────────────────────────────
+
+from fastapi import UploadFile, File, Form
+import fitz # PyMuPDF
+
+@app.post("/extract-text")
+async def extract_text(file: UploadFile = File(...)):
+    """
+    Extract text from a document. Handles both native PDFs and scanned PDFs/Images via OCR.
+    Uses PyMuPDF to render PDF pages and pytesseract for OCR.
+    """
+    import tempfile
+    import pytesseract
+    from PIL import Image
+    import io
+
+    print(f"[Extract] Processing file: {file.filename} ({file.content_type})")
+    
+    contents = await file.read()
+    filename_lower = file.filename.lower()
+    extracted_text = ""
+    method = ""
+    confidence_sum = 0
+    pages_processed = 0
+
+    try:
+        # Determine file type
+        is_pdf = filename_lower.endswith('.pdf') or file.content_type == 'application/pdf'
+        is_image = any(filename_lower.endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.webp']) or (file.content_type and file.content_type.startswith('image/'))
+
+        # Set tesseract command if on Windows and needed
+        if os.name == 'nt':
+            # Check common locations: conda env and system
+            conda_tess = os.path.join(sys.prefix, 'Library', 'bin', 'tesseract.exe')
+            sys_tess = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+            if os.path.exists(conda_tess):
+                pytesseract.pytesseract.tesseract_cmd = conda_tess
+            elif os.path.exists(sys_tess):
+                pytesseract.pytesseract.tesseract_cmd = sys_tess
+
+        if is_pdf:
+            print("[Extract] Detected PDF, processing with PyMuPDF...")
+            doc = fitz.open(stream=contents, filetype="pdf")
+            pages_processed = len(doc)
+            
+            for page_num in range(pages_processed):
+                page = doc.load_page(page_num)
+                # Try native text first
+                native_text = page.get_text()
+                
+                # If very little native text, it's likely a scanned page, fallback to OCR
+                if len(native_text.strip()) < 50:
+                    print(f"[Extract] Page {page_num+1} has little text, running OCR...")
+                    # Render page to image
+                    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2)) # 2x zoom for better OCR
+                    img_data = pix.tobytes("png")
+                    img = Image.open(io.BytesIO(img_data))
+                    
+                    try:
+                        # Attempt to get text and data (for confidence)
+                        data = pytesseract.image_to_data(img, lang='eng+hin', output_type=pytesseract.Output.DICT)
+                        text = pytesseract.image_to_string(img, lang='eng+hin')
+                        
+                        extracted_text += f"\n--- Page {page_num+1} ---\n{text}"
+                        
+                        # Calculate rough confidence
+                        confs = [int(c) for c in data['conf'] if int(c) != -1]
+                        if confs:
+                            confidence_sum += sum(confs) / len(confs)
+                            
+                        method = "pdf-parse + OCR (Tesseract)"
+                    except Exception as e:
+                        print(f"[Extract] OCR failed on page {page_num+1}: {e}")
+                        # Fallback to native even if sparse
+                        extracted_text += f"\n--- Page {page_num+1} ---\n{native_text}"
+                else:
+                    extracted_text += f"\n--- Page {page_num+1} ---\n{native_text}"
+                    method = "pdf-parse (Native)"
+            
+            # Average confidence
+            if confidence_sum > 0:
+                confidence_sum /= pages_processed
+            
+        elif is_image:
+             print("[Extract] Detected image, processing with Tesseract OCR...")
+             img = Image.open(io.BytesIO(contents))
+             pages_processed = 1
+             
+             data = pytesseract.image_to_data(img, lang='eng+hin', output_type=pytesseract.Output.DICT)
+             text = pytesseract.image_to_string(img, lang='eng+hin')
+             
+             extracted_text = text
+             method = "image OCR (Tesseract)"
+             
+             confs = [int(c) for c in data['conf'] if int(c) != -1]
+             if confs:
+                 confidence_sum = sum(confs) / len(confs)
+        else:
+             # Try raw text extraction
+             extracted_text = contents.decode('utf-8', errors='ignore')
+             method = "raw text"
+             pages_processed = 1
+
+        print(f"[Extract] Done. Extracted {len(extracted_text)} chars.")
+        return {
+            "filename": file.filename,
+            "text": extracted_text.strip() if extracted_text else "[No text could be extracted]",
+            "method": method,
+            "pages": pages_processed,
+            "confidence": confidence_sum,
+            "textLength": len(extracted_text)
+        }
+
+    except Exception as e:
+        print(f"[Extract] Extraction failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Text extraction failed: {str(e)}")
 
 # ── Run ───────────────────────────────────────────────────────────────────────
 

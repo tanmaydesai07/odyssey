@@ -6,6 +6,7 @@ import { LegalProvider } from './componts/LegalDataContext'
 import { ThemeProvider } from './ThemeContext'
 import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
+import NotebooksPage from './pages/NotebooksPage'
 import DashboardPage from './pages/DashboardPage'
 import NotFoundPage from './pages/NotFoundPage'
 
@@ -22,9 +23,18 @@ function App() {
               <Route path="/home" element={<Navigate to="/" replace />} />
               <Route path="*" element={<NotFoundPage />} />
             </Route>
+            {/* Notebooks — grid view of all cases, protected */}
+            <Route
+              path="/notebooks"
+              element={
+                <ProtectedRoute>
+                  <NotebooksPage />
+                </ProtectedRoute>
+              }
+            />
             {/* Dashboard — full-screen, no top nav, protected */}
             <Route
-              path="/dashboard"
+              path="/dashboard/:caseId?"
               element={
                 <ProtectedRoute>
                   <DashboardPage />

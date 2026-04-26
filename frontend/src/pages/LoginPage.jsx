@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Scale, Mail, Lock, User, ArrowRight, Eye, EyeOff } from 'lucide-react'
 import { useTheme } from '../ThemeContext'
@@ -18,6 +18,14 @@ const LoginPage = () => {
   const { theme } = useTheme()
   const navigate = useNavigate()
   const isDark = theme === 'dark'
+
+  // Redirect if already logged in
+  useEffect(() => {
+    const token = localStorage.getItem('token')
+    if (token) {
+      navigate('/notebooks', { replace: true })
+    }
+  }, [navigate])
 
   const resetForm = () => {
     setName('')
@@ -68,7 +76,7 @@ const LoginPage = () => {
       localStorage.setItem('token', data.token)
       localStorage.setItem('user', JSON.stringify(data.user))
 
-      navigate('/dashboard')
+      navigate('/notebooks')
     } catch {
       setError('Unable to reach the server. Please try again.')
     } finally {

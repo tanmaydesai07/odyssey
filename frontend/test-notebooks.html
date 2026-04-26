@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test NotebooksPage</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      padding: 20px;
+      background: #0a0a0a;
+      color: white;
+    }
+    .test-result {
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 8px;
+      border: 1px solid #333;
+    }
+    .pass { background: #10b98120; border-color: #10b981; }
+    .fail { background: #ef444420; border-color: #ef4444; }
+    button {
+      background: #c9a84c;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button:hover { opacity: 0.9; }
+  </style>
+</head>
+<body>
+  <h1>Frontend Test Suite</h1>
+  <button onclick="runTests()">Run Tests</button>
+  <div id="results"></div>
+
+  <script>
+    async function runTests() {
+      const results = document.getElementById('results');
+      results.innerHTML = '<p>Running tests...</p>';
+      
+      const tests = [];
+
+      // Test 1: Check if /notebooks route exists
+      try {
+        const res = await fetch('http://localhost:5174/notebooks');
+        tests.push({
+          name: 'NotebooksPage route exists',
+          pass: res.status === 200,
+          message: res.status === 200 ? 'Route accessible' : `Got status ${res.status}`
+        });
+      } catch (e) {
+        tests.push({
+          name: 'NotebooksPage route exists',
+          pass: false,
+          message: e.message
+        });
+      }
+
+      // Test 2: Check if login redirects to notebooks
+      try {
+        const loginPage = await fetch('http://localhost:5174/login');
+        const html = await loginPage.text();
+        tests.push({
+          name: 'Login page loads',
+          pass: html.includes('NyayaMitr') && html.includes('Sign In'),
+          message: html.includes('NyayaMitr') ? 'Login page renders correctly' : 'Missing expected content'
+        });
+      } catch (e) {
+        tests.push({
+          name: 'Login page loads',
+          pass: false,
+          message: e.message
+        });
+      }
+
+      // Test 3: Check if dashboard accepts caseId param
+      try {
+        const dashRes = await fetch('http://localhost:5174/dashboard/123');
+        tests.push({
+          name: 'Dashboard accepts caseId parameter',
+          pass: dashRes.status === 200,
+          message: dashRes.status === 200 ? 'Dynamic route works' : `Got status ${dashRes.status}`
+        });
+      } catch (e) {
+        tests.push({
+          name: 'Dashboard accepts caseId parameter',
+          pass: false,
+          message: e.message
+        });
+      }
+
+      // Render results
+      results.innerHTML = tests.map(t => `
+        <div class="test-result ${t.pass ? 'pass' : 'fail'}">
+          <strong>${t.pass ? '✓' : '✗'} ${t.name}</strong>
+          <p>${t.message}</p>
+        </div>
+      `).join('');
+
+      const passed = tests.filter(t => t.pass).length;
+      results.innerHTML += `<h3>Results: ${passed}/${tests.length} tests passed</h3>`;
+    }
+  </script>
+</body>
+</html>

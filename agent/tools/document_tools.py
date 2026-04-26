@@ -276,8 +276,7 @@ class DraftEditorTool(Tool):
 class DocumentExporterTool(Tool):
     name = "document_exporter"
     description = (
-        "Export a draft document to a file. Supports txt (always), "
-        "docx (Word format, needs python-docx), and pdf (needs reportlab). "
+        "Export a draft document to a professional PDF or DOCX file. "
         "Returns the file path. DOCX is recommended — opens in Word and Google Docs."
     )
     inputs = {
@@ -290,280 +289,109 @@ class DocumentExporterTool(Tool):
             "description": "Output format: txt | docx | pdf  (default: docx)",
             "nullable": True,
         },
+        "session_id": {
+            "type": "string",
+            "description": "Session ID for grouping documents in the same folder. Optional.",
+            "nullable": True,
+        },
     }
     output_type = "string"
 
-    def forward(self, draft_id: str, format: str = "docx") -> str:
+    def forward(self, draft_id: str, format: str = "docx", session_id: str = None) -> str:
+        from tools.document_exporter_new import export_pdf, export_docx, get_session_exports_dir
+        from cloud_storage import upload_document
+        import server
+
         draft = _load_draft(draft_id)
         if draft is None:
             return json.dumps({"error": f"Draft '{draft_id}' not found."})
 
-        fmt = (format or "txt").lower().strip()
+        fmt        = (format or "docx").lower().strip()
         draft_text = draft.get("draft_text", "")
-        ttype = draft.get("template_type", "document")
-        exports_dir = DRAFTS_DIR.parent / "exports"
-        exports_dir.mkdir(exist_ok=True)
+        ttype      = draft.get("template_type", "document")
+        title      = ttype.replace("_", " ").title()
+
+        # Get session_id from thread-local if not provided
+        if not session_id:
+            session_id = server.get_current_session_id()
+
+        # Session-grouped output folder
+        exports_dir = get_session_exports_dir(session_id)
         filename_base = f"{ttype}_{draft_id}"
 
-        # ── DOCX ──────────────────────────────────────────────────────────
-        if fmt == "docx":
-            try:
-                from docx import Document
-                from docx.shared import Pt, Cm, RGBColor
-                from docx.enum.text import WD_ALIGN_PARAGRAPH
-                from docx.oxml.ns import qn
-                from docx.oxml import OxmlElement
-                import re
-
-                doc = Document()
-
-                # ── Page setup ────────────────────────────────────────────
-                for section in doc.sections:
-                    section.top_margin    = Cm(2.54)
-                    section.bottom_margin = Cm(2.54)
-                    section.left_margin   = Cm(3.0)
-                    section.right_margin  = Cm(2.54)
-
-                # ── Style helpers ─────────────────────────────────────────
-                def _set_run_font(run, size_pt, bold=False, italic=False, color=None):
-                    run.font.name = "Times New Roman"
-                    run.font.size = Pt(size_pt)
-                    run.bold   = bold
-                    run.italic = italic
-                    if color:
-                        run.font.color.rgb = RGBColor(*color)
-
-                def _add_hrule(doc):
-                    """Add a thin horizontal line (paragraph border)."""
-                    p = doc.add_paragraph()
-                    pPr = p._p.get_or_add_pPr()
-                    pBdr = OxmlElement('w:pBdr')
-                    bottom = OxmlElement('w:bottom')
-                    bottom.set(qn('w:val'), 'single')
-                    bottom.set(qn('w:sz'), '6')
-                    bottom.set(qn('w:space'), '1')
-                    bottom.set(qn('w:color'), '000000')
-                    pBdr.append(bottom)
-                    pPr.append(pBdr)
-                    return p
-
-                def _add_inline_runs(para, text, base_size=11):
-                    """
-                    Parse inline markdown in `text` and add runs to `para`.
-                    Handles: **bold**, *italic*, *(italic)*, `code`
-                    """
-                    # Pattern: **bold**, *italic*, `code`
-                    pattern = re.compile(r'\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`')
-                    last = 0
-                    for m in pattern.finditer(text):
-                        # Plain text before this match
-                        if m.start() > last:
-                            r = para.add_run(text[last:m.start()])
-                            _set_run_font(r, base_size)
-                        if m.group(1):   # **bold**
-                            r = para.add_run(m.group(1))
-                            _set_run_font(r, base_size, bold=True)
-                        elif m.group(2): # *italic*
-                            r = para.add_run(m.group(2))
-                            _set_run_font(r, base_size, italic=True)
-                        elif m.group(3): # `code`
-                            r = para.add_run(m.group(3))
-                            r.font.name = "Courier New"
-                            r.font.size = Pt(base_size - 1)
-                        last = m.end()
-                    # Remaining plain text
-                    if last < len(text):
-                        r = para.add_run(text[last:])
-                        _set_run_font(r, base_size)
-
-                # ── Line-by-line renderer ─────────────────────────────────
-                lines = draft_text.split("\n")
-                i = 0
-                while i < len(lines):
-                    line = lines[i]
-                    stripped = line.strip()
-
-                    # Skip markdown table separator rows |---|---|
-                    if re.match(r'^\|[-|: ]+\|$', stripped):
-                        i += 1
-                        continue
-
-                    # Horizontal rule ---
-                    if re.match(r'^-{3,}$', stripped) or re.match(r'^\*{3,}$', stripped):
-                        _add_hrule(doc)
-                        i += 1
-                        continue
-
-                    # Heading 1: # text
-                    if stripped.startswith("# "):
-                        text = stripped[2:].strip()
-                        # Strip inline markdown from heading
-                        text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
-                        text = re.sub(r'\*(.+?)\*', r'\1', text)
-                        p = doc.add_paragraph()
-                        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                        r = p.add_run(text.upper())
-                        _set_run_font(r, 13, bold=True)
-                        i += 1
-                        continue
-
-                    # Heading 2: ## text
-                    if stripped.startswith("## "):
-                        text = stripped[3:].strip()
-                        text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
-                        p = doc.add_paragraph()
-                        p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                        r = p.add_run(text.upper())
-                        _set_run_font(r, 12, bold=True)
-                        # Underline via border
-                        pPr = p._p.get_or_add_pPr()
-                        pBdr = OxmlElement('w:pBdr')
-                        bot = OxmlElement('w:bottom')
-                        bot.set(qn('w:val'), 'single')
-                        bot.set(qn('w:sz'), '4')
-                        bot.set(qn('w:space'), '1')
-                        bot.set(qn('w:color'), '000000')
-                        pBdr.append(bot)
-                        pPr.append(pBdr)
-                        i += 1
-                        continue
-
-                    # Heading 3: ### text
-                    if stripped.startswith("### "):
-                        text = stripped[4:].strip()
-                        text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
-                        p = doc.add_paragraph()
-                        r = p.add_run(text)
-                        _set_run_font(r, 11, bold=True)
-                        i += 1
-                        continue
-
-                    # Numbered list: "1. text" or "1) text"
-                    num_match = re.match(r'^(\d+)[.)]\s+(.+)$', stripped)
-                    if num_match:
-                        num   = num_match.group(1)
-                        text  = num_match.group(2)
-                        p = doc.add_paragraph()
-                        p.paragraph_format.left_indent  = Cm(0.75)
-                        p.paragraph_format.first_line_indent = Cm(-0.75)
-                        p.paragraph_format.space_after  = Pt(4)
-                        # Number run
-                        r = p.add_run(f"{num}. ")
-                        _set_run_font(r, 11, bold=False)
-                        # Content with inline markdown
-                        _add_inline_runs(p, text, base_size=11)
-                        i += 1
-                        continue
-
-                    # Bullet list: - text or * text
-                    if re.match(r'^[-*]\s+', stripped):
-                        text = re.sub(r'^[-*]\s+', '', stripped)
-                        p = doc.add_paragraph()
-                        p.paragraph_format.left_indent       = Cm(0.75)
-                        p.paragraph_format.first_line_indent = Cm(-0.5)
-                        r_bullet = p.add_run("• ")
-                        _set_run_font(r_bullet, 11)
-                        _add_inline_runs(p, text, base_size=11)
-                        i += 1
-                        continue
-
-                    # Table row: | col | col |
-                    if stripped.startswith("|") and stripped.endswith("|"):
-                        cells = [c.strip() for c in stripped.strip("|").split("|")]
-                        cells = [re.sub(r'\*\*(.+?)\*\*', r'\1', c) for c in cells]
-                        cells = [re.sub(r'\*(.+?)\*', r'\1', c) for c in cells]
-                        cells = [c for c in cells if c]
-                        if cells:
-                            p = doc.add_paragraph()
-                            p.paragraph_format.left_indent = Cm(0.5)
-                            for j, cell in enumerate(cells):
-                                r = p.add_run(cell)
-                                _set_run_font(r, 11, bold=(j == 0))
-                                if j < len(cells) - 1:
-                                    p.add_run("    ")
-                        i += 1
-                        continue
-
-                    # Empty line → small spacer
-                    if not stripped:
-                        p = doc.add_paragraph()
-                        p.paragraph_format.space_after = Pt(2)
-                        i += 1
-                        continue
-
-                    # Normal paragraph with inline markdown
-                    p = doc.add_paragraph()
-                    p.paragraph_format.space_after = Pt(4)
-                    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-                    _add_inline_runs(p, stripped, base_size=11)
-                    i += 1
-
-                docx_path = exports_dir / f"{filename_base}.docx"
-                doc.save(str(docx_path))
+        try:
+            if fmt == "docx":
+                out = exports_dir / f"{filename_base}.docx"
+                export_docx(draft_text, out, title=title)
+                
+                # Upload to Cloudinary
+                if session_id:
+                    cloud_result = upload_document(out, session_id, out.name)
+                    return json.dumps({
+                        "draft_id": draft_id,
+                        "format": "docx",
+                        "file_path": str(out),
+                        "download_url": cloud_result["url"],
+                        "storage": cloud_result["storage"],
+                        "message": f"Professional DOCX exported and uploaded. Download: {cloud_result['url']}",
+                    })
+                
                 return json.dumps({
                     "draft_id": draft_id,
                     "format": "docx",
-                    "file_path": str(docx_path),
-                    "message": f"DOCX exported to {docx_path}. Open in Word or Google Docs.",
+                    "file_path": str(out),
+                    "message": f"Professional DOCX exported to {out}",
                 })
-            except ImportError:
-                return json.dumps({"error": "python-docx not installed. Run: pip install python-docx"})
-            except Exception as e:
-                return json.dumps({"error": f"DOCX generation failed: {e}"})
 
-        # ── PDF ───────────────────────────────────────────────────────────
-        if fmt == "pdf":
-            try:
-                from reportlab.lib.pagesizes import A4
-                from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-                from reportlab.lib.units import cm
-                from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-                from reportlab.lib.enums import TA_LEFT
-
-                pdf_path = exports_dir / f"{filename_base}.pdf"
-                doc = SimpleDocTemplate(
-                    str(pdf_path),
-                    pagesize=A4,
-                    leftMargin=2.5 * cm,
-                    rightMargin=2.5 * cm,
-                    topMargin=2.5 * cm,
-                    bottomMargin=2.5 * cm,
-                )
-                styles = getSampleStyleSheet()
-                body_style = ParagraphStyle(
-                    "Body",
-                    parent=styles["Normal"],
-                    fontSize=11,
-                    leading=16,
-                    alignment=TA_LEFT,
-                )
-                story = []
-                for line in draft_text.split("\n"):
-                    if line.strip():
-                        story.append(Paragraph(line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"), body_style))
-                    else:
-                        story.append(Spacer(1, 0.3 * cm))
-                doc.build(story)
+            if fmt == "pdf":
+                out = exports_dir / f"{filename_base}.pdf"
+                export_pdf(draft_text, out, title=title)
+                
+                # Upload to Cloudinary
+                if session_id:
+                    cloud_result = upload_document(out, session_id, out.name)
+                    return json.dumps({
+                        "draft_id": draft_id,
+                        "format": "pdf",
+                        "file_path": str(out),
+                        "download_url": cloud_result["url"],
+                        "storage": cloud_result["storage"],
+                        "message": f"Professional PDF exported and uploaded. Download: {cloud_result['url']}",
+                    })
+                
                 return json.dumps({
                     "draft_id": draft_id,
                     "format": "pdf",
-                    "file_path": str(pdf_path),
-                    "message": f"PDF exported to {pdf_path}",
+                    "file_path": str(out),
+                    "message": f"Professional PDF exported to {out}",
                 })
-            except ImportError:
-                fmt = "txt"  # fall through to txt
 
-        # ── TXT (always works) ────────────────────────────────────────────
-        txt_path = exports_dir / f"{filename_base}.txt"
-        with open(txt_path, "w", encoding="utf-8") as f:
-            f.write(draft_text)
+            # TXT fallback
+            out = exports_dir / f"{filename_base}.txt"
+            out.write_text(draft_text, encoding="utf-8")
+            
+            # Upload to Cloudinary
+            if session_id:
+                cloud_result = upload_document(out, session_id, out.name)
+                return json.dumps({
+                    "draft_id": draft_id,
+                    "format": "txt",
+                    "file_path": str(out),
+                    "download_url": cloud_result["url"],
+                    "storage": cloud_result["storage"],
+                    "message": f"Text exported and uploaded. Download: {cloud_result['url']}",
+                })
+            
+            return json.dumps({
+                "draft_id": draft_id,
+                "format": "txt",
+                "file_path": str(out),
+                "message": f"Text exported to {out}",
+            })
 
-        return json.dumps({
-            "draft_id": draft_id,
-            "format": "txt",
-            "file_path": str(txt_path),
-            "message": f"Document exported to {txt_path}. Open the file to copy/print.",
-        })
+        except Exception as e:
+            import traceback
+            return json.dumps({"error": f"Export failed: {e}", "trace": traceback.format_exc()})
 
 
 # ---------------------------------------------------------------------------

@@ -34,7 +34,6 @@ def _count_unmatched_parens(code: str) -> int:
     i = 0
     while i < len(code):
         c = code[i]
-        # Handle escape sequences
         if c == '\\' and i + 1 < len(code):
             i += 2
             continue
@@ -128,15 +127,8 @@ class ZenModel(Model):
             return "user"
         return "user"
 
-    # ------------------------------------------------------------------
-    # Code body fixer
-    # ------------------------------------------------------------------
     def _fix_code_body(self, code: str) -> str:
-        """Fix common issues inside a code block:
-        1. final_answer() with no args — find the variable and inject it
-        2. Unterminated string on last line — close the quote
-        3. Unbalanced parentheses — counted correctly, ignoring parens inside strings
-        """
+        """Fix common issues inside a code block."""
         lines = code.rstrip().split('\n')
         if not lines:
             return code
@@ -152,16 +144,15 @@ class ZenModel(Model):
                         print(f"[ZenModel._fix_code_body] Fixed final_answer() -> final_answer({var_name})")
                         break
 
-        # Find last non-empty line index
+        # Find last non-empty line
         last_idx = len(lines) - 1
         while last_idx >= 0 and not lines[last_idx].strip():
             last_idx -= 1
         if last_idx < 0:
             return '\n'.join(lines)
 
-        # Fix 2: Unterminated string on last line
+        # Fix 2: Unterminated string
         if not _is_string_terminated(lines[last_idx]):
-            # Figure out which quote type is open
             in_single = False
             in_double = False
             i = 0
@@ -183,14 +174,13 @@ class ZenModel(Model):
                 lines[last_idx] = lines[last_idx] + '"'
                 print("[ZenModel._fix_code_body] Fixed unterminated double quote")
 
-        # Fix 3: Unbalanced parens — count correctly ignoring parens inside strings
+        # Fix 3: Unbalanced parens
         full_code = '\n'.join(lines)
         open_parens = _count_unmatched_parens(full_code)
         if open_parens > 0:
             lines[last_idx] = lines[last_idx].rstrip() + ')' * open_parens
             print(f"[ZenModel._fix_code_body] Fixed {open_parens} unclosed parens")
         elif open_parens < 0:
-            # More closing than opening — strip excess from end
             excess = abs(open_parens)
             tail = lines[last_idx].rstrip()
             while excess > 0 and tail.endswith(')'):
@@ -199,40 +189,88 @@ class ZenModel(Model):
             lines[last_idx] = tail
             print(f"[ZenModel._fix_code_body] Removed {abs(open_parens)} excess closing parens")
 
+        # Fix 4: Ensure the code ends with a final_answer() call
+        # If there are tool calls but no final_answer, add one using the last result var
+        full_code_check = '\n'.join(lines)
+        has_final_answer = bool(re.search(r'final_answer\(', full_code_check))
+        has_tool_calls = bool(re.search(r'^[\w_]+ ?= ?[\w_]+\(', full_code_check, re.MULTILINE))
+        if not has_final_answer and has_tool_calls:
+            # Find last assigned variable
+            var_matches = list(re.finditer(r'^([\w_]+) ?=', full_code_check, re.MULTILINE))
+            if var_matches:
+                last_var = var_matches[-1].group(1)
+                lines.append(f'final_answer(str({last_var}))')
+                print(f"[ZenModel._fix_code_body] Added missing final_answer({last_var})")
+            else:
+                lines.append('final_answer("I have processed your request. Please ask a follow-up question.")')
+                print("[ZenModel._fix_code_body] Added generic final_answer()")
+
         return '\n'.join(lines)
 
-    # ------------------------------------------------------------------
-    # Main code fixer
-    # ------------------------------------------------------------------
-    def _fix_truncated_code(self, content: str) -> str:
-        """Fix code blocks that were truncated or malformed by the API."""
+    def _normalize_content(self, content: str) -> str:
+        """
+        Normalize model output to proper smolagents format.
+        Handles all the weird things the model outputs instead of proper code blocks.
+        """
 
-        has_code_section = bool(re.search(r'\bCode:\s*\n', content, re.IGNORECASE))
-        has_fence_opener = bool(re.search(r'```(?:py|python)\n', content))
+        # Step 1: Strip HTML-like </code> tags the model sometimes emits
+        content = re.sub(r'</code>', '', content)
+        content = re.sub(r'<code>', '', content)
+
+        # Step 1.5: Convert XML-style tool calls (MiniMax/big-pickle) to Python
+        # Pattern: <minimax:tool_call><invoke name="tool"><parameter name="k">v</parameter></invoke></minimax:tool_call>
+        xml_tool_pat = re.compile(
+            r'<(?:minimax:)?tool_call>\s*<invoke\s+name=["\']([^"\']+)["\']\s*>([\s\S]*?)</invoke>\s*</(?:minimax:)?tool_call>',
+            re.IGNORECASE
+        )
+        xml_param_pat = re.compile(r'<parameter\s+name=["\']([^"\']+)["\']\s*>([\s\S]*?)</parameter>', re.IGNORECASE)
+
+        if xml_tool_pat.search(content):
+            def _xml_to_py(m):
+                tool_name = m.group(1).strip()
+                params = xml_param_pat.findall(m.group(2))
+                args = ', '.join(f'{k}="{v.strip()}"' for k, v in params)
+                return f'result_{tool_name} = {tool_name}({args})\nprint(result_{tool_name})'
+
+            first_match = xml_tool_pat.search(content)
+            thought_part = content[:first_match.start()].strip()
+            if not thought_part.startswith('Thought:'):
+                thought_part = f'Thought: {thought_part}' if thought_part else 'Thought: Processing the request.'
+            code_body = xml_tool_pat.sub(_xml_to_py, content)
+            code_body = re.sub(r'<[^>]+>', '', code_body).strip()  # strip remaining XML
+            code_body = re.sub(r'^Thought:.*$', '', code_body, flags=re.MULTILINE).strip()
+            fixed_body = self._fix_code_body(code_body)
+            print('[ZenModel._normalize] Converted XML tool calls to Python')
+            return f'{thought_part}\n\nCode:\n```py\n{fixed_body}\n```<end_code>'
+
+        # Step 2: Normalize ```python -> ```py
+        content = re.sub(r'```python\n', '```py\n', content)
+
+        # Step 3: Check what we have now
+        has_thought = bool(re.search(r'\bThought\s*:', content, re.IGNORECASE))
+        has_code_section = bool(re.search(r'\bCode\s*:\s*\n', content, re.IGNORECASE))
+        has_fence_opener = bool(re.search(r'```py\n', content))
         has_end_code = '<end_code>' in content
 
-        # Pattern 0: No code at all — but skip planning steps
-        if not has_code_section and not has_fence_opener and not has_end_code:
-            is_planning = bool(re.search(
-                r'(^#{1,3}\s|^Plan:|^Step \d|^Facts|^Updated facts)',
-                content, re.MULTILINE | re.IGNORECASE
-            ))
-            if not is_planning:
-                safe = content.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
-                injected = (
-                    content.rstrip()
-                    + '\n\nCode:\n```py\nfinal_answer("'
-                    + safe[:800]
-                    + '\\n\\nDisclaimer: This is informational guidance only, not legal advice.")\n```<end_code>'
-                )
-                print("[ZenModel._fix_truncated_code] (p0) Injected final_answer for pure-thought response")
-                return injected
-            return content
+        # Step 4: If there's a proper code block already, just fix the body
+        if has_fence_opener:
+            content_clean = content.replace('<end_code>', '')
+            all_opens = list(re.finditer(r'```py\n', content_clean))
+            last_open = all_opens[-1]
+            before_code = content_clean[:last_open.end()]
+            code_after = content_clean[last_open.end():]
 
-        # Pattern 1: Code: section but no fence
-        if has_code_section and not has_fence_opener:
+            # Strip any existing closing fence
+            code_body_raw = re.sub(r'\n```\s*$', '', code_after, flags=re.MULTILINE)
+            fixed_body = self._fix_code_body(code_body_raw)
+            result = before_code + fixed_body + '\n```<end_code>'
+            print("[ZenModel._normalize] Fixed existing code block")
+            return result
+
+        # Step 5: Has "Code:" section but no fence — inject fence
+        if has_code_section:
             fixed = re.sub(
-                r'(Code:\s*\n\s*)',
+                r'(Code\s*:\s*\n\s*)',
                 lambda m: m.group(0) + '```py\n',
                 content, count=1, flags=re.IGNORECASE,
             )
@@ -243,34 +281,67 @@ class ZenModel(Model):
                 fixed_body = self._fix_code_body(code_body)
                 fixed = fixed[:code_start.end()] + fixed_body
             fixed = fixed.rstrip() + '\n```<end_code>'
-            print("[ZenModel._fix_truncated_code] (p1) Injected missing ```py fence")
+            print("[ZenModel._normalize] Injected fence after Code: section")
             return fixed
 
-        if not has_fence_opener:
-            return content
+        # Step 6: Pure thought or bare code — no fences at all
+        # Extract the thought text and wrap a final_answer call around it
+        # so smolagents doesn't get stuck
+        thought_text = content.strip()
 
-        # Patterns 2+: has fence opener — extract code body and fix it
-        content_clean = content.replace('<end_code>', '')
-        all_opens = list(re.finditer(r'```(?:py|python)\n', content_clean))
-        last_open = all_opens[-1]
-        before_code = content_clean[:last_open.end()]
-        code_after = content_clean[last_open.end():]
+        # Check if it looks like raw Python code (bare tool calls / assignments)
+        code_line_patterns = [
+            r'^[\w_]+ ?= ?[\w_]+\(',  # var = tool(
+            r'^print\(',              # print(
+            r'^[\w_]+\([^)]*\)\s*$',  # bare_call()
+        ]
+        code_lines = [l.strip() for l in thought_text.splitlines() if l.strip()]
+        code_line_count = sum(
+            1 for l in code_lines[:10]
+            if any(re.match(p, l) for p in code_line_patterns)
+        )
+        is_raw_code = code_line_count >= max(1, len(code_lines[:10]) * 0.3)
 
-        # Strip any existing closing fence from code_after before fixing
-        closing_fence = chr(96) * 3
-        code_body_raw = re.sub(r'\n' + closing_fence + r'\s*$', '', code_after, flags=re.MULTILINE)
+        # Check if it looks like the model is just thinking (not giving an answer)
+        thinking_patterns = [
+            r'I (need|will|should|must|can|am going to)',
+            r'Let me (use|call|analyze|check|search|find|identify)',
+            r'First,? I',
+            r'The user (has|wants|needs|is)',
+            r'I understand',
+            r'I\'ll (use|call|start|begin|proceed)',
+        ]
+        is_just_thinking = any(re.search(p, thought_text, re.IGNORECASE) for p in thinking_patterns)
 
-        fixed_body = self._fix_code_body(code_body_raw)
-        result = before_code + fixed_body + '\n' + closing_fence + '<end_code>'
+        if is_raw_code or is_just_thinking:
+            # The model output bare code or is just thinking — force a tool call
+            # Never wrap raw code as the final answer string!
+            print("[ZenModel._normalize] Bare code / pure thought detected — injecting intake_analyzer call")
+            injected = (
+                f"Thought: I need to gather more information to help the user.\n\n"
+                f"Code:\n```py\n"
+                f"result = intake_analyzer(user_input=\"Please help the user with their legal question.\")\n"
+                f"print(result)\n"
+                f"```<end_code>"
+            )
+            return injected
+        else:
+            # Looks like a genuine plain-text answer — wrap it
+            print("[ZenModel._normalize] Wrapping plain text as final_answer")
+            safe = thought_text.replace('"', '\\"').replace('\n', '\\n')
+            return (
+                f"Thought: Providing final answer.\n\n"
+                f"Code:\n```py\n"
+                f"answer = \"{safe}\"\n"
+                f"answer += \"\\n\\n**Disclaimer**: This is informational guidance only, not legal advice.\"\n"
+                f"final_answer(answer)\n"
+                f"```<end_code>"
+            )
 
-        if code_body_raw != code_after.rstrip():
-            print(f"[ZenModel._fix_truncated_code] Fixed code body, tail: {result[-80:]!r}")
+    def _fix_truncated_code(self, content: str) -> str:
+        """Alias for _normalize_content for backward compatibility."""
+        return self._normalize_content(content)
 
-        return result
-
-    # ------------------------------------------------------------------
-    # API call
-    # ------------------------------------------------------------------
     def __call__(
         self,
         messages: List[Dict[str, str]],
@@ -361,7 +432,7 @@ class ZenModel(Model):
                         output_preview=content[:300],
                     )
 
-                content = self._fix_truncated_code(content)
+                content = self._normalize_content(content)
                 return ChatMessage(role=rm.get("role", "assistant"), content=content)
 
             except requests.exceptions.Timeout:
