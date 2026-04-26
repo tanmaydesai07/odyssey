@@ -1,0 +1,13 @@
+faster-whisper
+sounddevice
+scipy
+numpy
+ollama
+python-dotenv
+fastapi
+uvicorn
+websockets
+pyngrok
+webrtcvad
+twilio
+kokoro
